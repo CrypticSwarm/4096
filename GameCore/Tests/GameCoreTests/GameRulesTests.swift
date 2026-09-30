@@ -33,6 +33,16 @@ struct GameRulesTests {
         }
     }
 
+    @Test func classicOnOtherSizes() {
+        #expect(GameRules.classic(boardSize: 4) == .classic)
+        let fiveByFive = GameRules.classic(boardSize: 5)
+        #expect(fiveByFive.id == "classic-5x5")
+        #expect(fiveByFive.boardSize == 5)
+        #expect(fiveByFive.winningValue == GameRules.classic.winningValue)
+        #expect(fiveByFive.startingTileCount == GameRules.classic.startingTileCount)
+        #expect(fiveByFive.spawnDistribution == GameRules.classic.spawnDistribution)
+    }
+
     @Test func classicStartingTilesAreNinetyPercentTwos() {
         var generator = SplitMix64(seed: 2)
         let tiles = (0..<5_000).flatMap { _ in

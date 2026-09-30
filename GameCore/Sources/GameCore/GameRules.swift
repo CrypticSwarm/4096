@@ -25,6 +25,17 @@ public struct GameRules: Identifiable, Hashable, Codable, Sendable {
     /// distribution, played to a 4096 tile.
     public static let classic = GameRules(id: "classic")
 
+    /// The classic game on a board of another size: ``classic`` for 4×4, and
+    /// otherwise the classic parameters with the id `"classic-<size>x<size>"`,
+    /// such as `"classic-5x5"`. Use it wherever such a variant is created, so
+    /// its saved game and high score are always found under the same id.
+    ///
+    /// - Precondition: `boardSize` is in ``supportedBoardSizes``.
+    public static func classic(boardSize: Int) -> GameRules {
+        boardSize == classic.boardSize
+            ? classic : GameRules(id: "classic-\(boardSize)x\(boardSize)", boardSize: boardSize)
+    }
+
     /// Creates rules for a variant; parameters default to the classic game's.
     ///
     /// - Precondition: `id` isn't empty, `boardSize` is in
