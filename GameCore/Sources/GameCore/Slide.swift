@@ -10,15 +10,17 @@ public struct TileMovement: Hashable, Sendable {
     ///
     /// Both tiles of a merge are flagged and move to the same cell, which then
     /// holds one tile of twice their value (listed in ``SlideResult/merges``).
-    public let merged: Bool
+    /// Of the two, the one that started nearer the edge the tiles moved toward
+    /// is the one the other slid into.
+    public internal(set) var didMerge: Bool
 
     /// Creates a movement record, for example to describe an expected slide
     /// in a test or preview.
-    public init(from: Position, to: Position, value: Int, merged: Bool) {
+    public init(from: Position, to: Position, value: Int, didMerge: Bool) {
         self.from = from
         self.to = to
         self.value = value
-        self.merged = merged
+        self.didMerge = didMerge
     }
 }
 
@@ -95,11 +97,10 @@ extension Board {
                 let value = Self.value(ofExponent: exponent)
                 if let candidate = mergeCandidate, Self.canMerge(result.cells[candidate.cell], exponent) {
                     result.cells[candidate.cell] += 1
-                    let partner = movements[candidate.movement]
-                    movements[candidate.movement] = TileMovement(
-                        from: partner.from, to: partner.to, value: partner.value, merged: true)
-                    movements.append(TileMovement(from: from, to: partner.to, value: value, merged: true))
-                    merges.append(TileMerge(position: partner.to, value: 2 * value))
+                    movements[candidate.movement].didMerge = true
+                    let to = movements[candidate.movement].to
+                    movements.append(TileMovement(from: from, to: to, value: value, didMerge: true))
+                    merges.append(TileMerge(position: to, value: 2 * value))
                     mergeCandidate = nil
                 } else {
                     let to = direction.position(line: line, offset: nextOffset, size: size)
@@ -107,7 +108,7 @@ extension Board {
                     let cell = index(of: to)
                     result.cells[cell] = exponent
                     mergeCandidate = (cell, movements.count)
-                    movements.append(TileMovement(from: from, to: to, value: value, merged: false))
+                    movements.append(TileMovement(from: from, to: to, value: value, didMerge: false))
                 }
             }
         }

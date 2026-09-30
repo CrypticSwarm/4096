@@ -16,15 +16,37 @@ struct GameRulesTests {
             SpawnDistribution.classic.outcomes == [.init(value: 2, weight: 9), .init(value: 4, weight: 1)])
     }
 
-    @Test(arguments: [GameRules.classic, fiveByFive, GameRules(id: "tiny", boardSize: 2, startingTileCount: 4)])
+    @Test(arguments: [
+        GameRules.classic,
+        fiveByFive,
+        GameRules(id: "tiny", boardSize: 2, startingTileCount: 4),
+        GameRules(id: "eights", boardSize: 3, spawnDistribution: .init(outcomes: [.init(value: 8, weight: 1)])),
+    ])
     func startingBoard(rules: GameRules) {
+        let allowed = Set(rules.spawnDistribution.outcomes.map(\.value))
         var generator = SplitMix64(seed: 21)
         for _ in 0..<100 {
             let board = rules.startingBoard(using: &generator)
             #expect(board.size == rules.boardSize)
+            #expect(rules.accepts(board))
             #expect(board.tileCount == rules.startingTileCount)
-            #expect(board.rows.joined().allSatisfy { [0, 2, 4].contains($0) })
+            #expect(board.rows.joined().allSatisfy { $0 == 0 || allowed.contains($0) })
         }
+    }
+
+    @Test func classicStartingTilesAreNinetyPercentTwos() {
+        var generator = SplitMix64(seed: 2)
+        let tiles = (0..<5_000).flatMap { _ in
+            GameRules.classic.startingBoard(using: &generator).rows.joined().filter { $0 != 0 }
+        }
+        #expect(tiles.count == 10_000)
+        #expect((850...1_150).contains(tiles.count { $0 == 4 }))  // expected 1000, σ = 30
+    }
+
+    @Test func acceptsOnlyBoardsOfItsSize() {
+        #expect(GameRules.classic.accepts(Board(size: 4)))
+        #expect(!GameRules.classic.accepts(Board(size: 5)))
+        #expect(Self.fiveByFive.accepts(Board(size: 5)))
     }
 
     @Test func startingBoardIsDeterministicPerSeed() {
@@ -35,18 +57,25 @@ struct GameRulesTests {
         #expect(Set(boards).count > 1)
     }
 
-    @Test(arguments: [
-        (GameRules.classic, [[2048, 1024], [0, 0]], false),
-        (GameRules.classic, [[4096, 0], [0, 0]], true),
-        (GameRules.classic, [[2, 0], [0, 8192]], true),
-        (GameRules.classic, [[0, 0], [0, 0]], false),
-        (GameRules(id: "2048", winningValue: 2048), [[2048, 0], [0, 0]], true),
-        (GameRules(id: "2048", winningValue: 2048), [[1024, 1024], [0, 0]], false),
-        (fiveByFive, [[4096, 0], [0, 0]], false),
-        (fiveByFive, [[8192, 0], [0, 0]], true),
-    ])
-    func isWon(rules: GameRules, rows: [[Int]], expected: Bool) throws {
-        #expect(rules.isWon(try Board(rows: rows)) == expected)
+    static let winCases: [(rules: GameRules, tiles: [Int], expected: Bool)] = [
+        (GameRules.classic, [2048, 1024], false),
+        (GameRules.classic, [4096], true),
+        (GameRules.classic, [2, 0, 0, 8192], true),
+        (GameRules.classic, [], false),
+        (GameRules(id: "2048", winningValue: 2048), [2048], true),
+        (GameRules(id: "2048", winningValue: 2048), [1024, 1024], false),
+        (fiveByFive, [4096], false),
+        (fiveByFive, [8192], true),
+        (GameRules(id: "max", winningValue: Board.maxTileValue), [Board.maxTileValue / 2], false),
+        (GameRules(id: "max", winningValue: Board.maxTileValue), [Board.maxTileValue], true),
+    ]
+
+    /// `tiles` fill the rules' board in row-major order; the rest is empty.
+    @Test(arguments: winCases)
+    func isWinning(rules: GameRules, tiles: [Int], expected: Bool) throws {
+        let cells = tiles + Array(repeating: 0, count: rules.boardSize * rules.boardSize - tiles.count)
+        let rows = (0..<rules.boardSize).map { Array(cells[($0 * rules.boardSize)...].prefix(rules.boardSize)) }
+        #expect(rules.isWinning(try Board(rows: rows)) == expected)
     }
 
     @Test(arguments: 2...6)
@@ -72,7 +101,8 @@ struct GameRulesTests {
     }
 
     @Test(arguments: [
-        GameRules.classic, fiveByFive, GameRules(id: "custom", spawnDistribution: .init([.init(value: 4, weight: 1)])),
+        GameRules.classic, fiveByFive,
+        GameRules(id: "custom", spawnDistribution: .init(outcomes: [.init(value: 4, weight: 1)])),
     ])
     func codableRoundTrip(rules: GameRules) throws {
         #expect(try JSONDecoder().decode(GameRules.self, from: JSONEncoder().encode(rules)) == rules)
@@ -93,6 +123,8 @@ struct GameRulesTests {
         (id: "x", boardSize: 17, winningValue: 4096, startingTileCount: 2),
         (id: "x", boardSize: 4, winningValue: 4000, startingTileCount: 2),
         (id: "x", boardSize: 4, winningValue: 0, startingTileCount: 2),
+        (id: "x", boardSize: 4, winningValue: 1, startingTileCount: 2),
+        (id: "x", boardSize: 4, winningValue: 1 << 49, startingTileCount: 2),
         (id: "x", boardSize: 4, winningValue: 4096, startingTileCount: 0),
         (id: "x", boardSize: 4, winningValue: 4096, startingTileCount: 17),
     ])
@@ -114,6 +146,5 @@ struct GameRulesTests {
         let rules = try JSONDecoder().decode(GameRules.self, from: Data(json.utf8))
         var generator = SplitMix64(seed: 1)
         #expect(rules.startingBoard(using: &generator).isFull)
-        #expect(GameRules.supportedBoardSizes == 2...16)
     }
 }

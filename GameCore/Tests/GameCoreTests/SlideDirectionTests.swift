@@ -67,31 +67,30 @@ struct SlideDirectionTests {
             [0, 2, 4],
             [8, 0, 4],
         ])
-        let position = { Position(row: $0, column: $1) }
 
         let up = board.sliding(.up)
         #expect(up.board.rows == [[8, 4, 8], [0, 0, 0], [0, 0, 0]])
         #expect(
             up.movements == [
-                TileMovement(from: position(0, 1), to: position(0, 1), value: 2, merged: true),
-                TileMovement(from: position(1, 1), to: position(0, 1), value: 2, merged: true),
-                TileMovement(from: position(1, 2), to: position(0, 2), value: 4, merged: true),
-                TileMovement(from: position(2, 0), to: position(0, 0), value: 8, merged: false),
-                TileMovement(from: position(2, 2), to: position(0, 2), value: 4, merged: true),
+                TileMovement(from: at(0, 1), to: at(0, 1), value: 2, didMerge: true),
+                TileMovement(from: at(1, 1), to: at(0, 1), value: 2, didMerge: true),
+                TileMovement(from: at(1, 2), to: at(0, 2), value: 4, didMerge: true),
+                TileMovement(from: at(2, 0), to: at(0, 0), value: 8, didMerge: false),
+                TileMovement(from: at(2, 2), to: at(0, 2), value: 4, didMerge: true),
             ])
         #expect(
-            up.merges == [TileMerge(position: position(0, 1), value: 4), TileMerge(position: position(0, 2), value: 8)])
+            up.merges == [TileMerge(position: at(0, 1), value: 4), TileMerge(position: at(0, 2), value: 8)])
 
         let right = board.sliding(.right)
         #expect(right.board.rows == [[0, 0, 2], [0, 2, 4], [0, 8, 4]])
         #expect(right.merges.isEmpty)
         #expect(
             right.movements == [
-                TileMovement(from: position(0, 1), to: position(0, 2), value: 2, merged: false),
-                TileMovement(from: position(1, 1), to: position(1, 1), value: 2, merged: false),
-                TileMovement(from: position(1, 2), to: position(1, 2), value: 4, merged: false),
-                TileMovement(from: position(2, 0), to: position(2, 1), value: 8, merged: false),
-                TileMovement(from: position(2, 2), to: position(2, 2), value: 4, merged: false),
+                TileMovement(from: at(0, 1), to: at(0, 2), value: 2, didMerge: false),
+                TileMovement(from: at(1, 1), to: at(1, 1), value: 2, didMerge: false),
+                TileMovement(from: at(1, 2), to: at(1, 2), value: 4, didMerge: false),
+                TileMovement(from: at(2, 0), to: at(2, 1), value: 8, didMerge: false),
+                TileMovement(from: at(2, 2), to: at(2, 2), value: 4, didMerge: false),
             ])
     }
 
@@ -120,17 +119,17 @@ struct SlideDirectionTests {
         var generator = SplitMix64(seed: UInt64(size))
         for _ in 0..<50 {
             let board = randomBoard(size: size, using: &generator)
+            let rotated = board.rotatedClockwise
             for direction in Direction.allCases {
                 let result = board.sliding(direction)
-                let rotated = rotated(board)
                 let rotatedResult = rotated.sliding(direction.rotatedClockwise)
 
-                #expect(rotatedResult.board == self.rotated(result.board))
+                #expect(rotatedResult.board == result.board.rotatedClockwise)
                 #expect(rotatedResult.scoreDelta == result.scoreDelta)
                 let expectedMovements = result.movements.map {
                     TileMovement(
                         from: rotatedClockwise($0.from, size: size), to: rotatedClockwise($0.to, size: size),
-                        value: $0.value, merged: $0.merged)
+                        value: $0.value, didMerge: $0.didMerge)
                 }
                 #expect(Set(rotatedResult.movements) == Set(expectedMovements))
                 let expectedMerges = result.merges.map {
@@ -169,9 +168,5 @@ struct SlideDirectionTests {
                 #expect(result.scoreDelta == slid.map(\.score).reduce(0, +))
             }
         }
-    }
-
-    private func rotated(_ board: Board) -> Board {
-        try! Board(rows: rotatedClockwise(board.rows))
     }
 }

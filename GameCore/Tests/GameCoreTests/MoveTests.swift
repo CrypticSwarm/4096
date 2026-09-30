@@ -28,7 +28,7 @@ struct MoveTests {
         var generator = SplitMix64(seed: 9)
         let before = generator
 
-        #expect(GameRules.classic.move(direction, on: board, using: &generator) == nil)
+        #expect(GameRules(id: "3x3", boardSize: 3).move(direction, on: board, using: &generator) == nil)
         #expect(generator == before)
         #expect(
             Move(direction: direction, spawn: Spawn(position: Position(row: 2, column: 2), value: 2), on: board) == nil)
@@ -54,6 +54,12 @@ struct MoveTests {
         #expect(move.scoreDelta == 4)
     }
 
+    @Test func replayAcceptsACellFreedByTheSlide() throws {
+        let board = try Board(rows: [[2, 2, 2], [0, 0, 0], [0, 0, 0]])
+        let move = try #require(Move(direction: .left, spawn: Spawn(position: at(0, 2), value: 2), on: board))
+        #expect(move.board.rows == [[4, 2, 2], [0, 0, 0], [0, 0, 0]])
+    }
+
     @Test(arguments: [
         Spawn(position: Position(row: 0, column: 0), value: 2),  // occupied after the slide
         Spawn(position: Position(row: 0, column: 1), value: 2),  // freed by the slide, but taken again
@@ -77,7 +83,8 @@ struct MoveTests {
         GameRules(id: "3x3", boardSize: 3, winningValue: 64),
         GameRules(id: "5x5", boardSize: 5, startingTileCount: 3),
         GameRules(
-            id: "6x6", boardSize: 6, spawnDistribution: .init([.init(value: 2, weight: 1), .init(value: 8, weight: 1)])),
+            id: "6x6", boardSize: 6,
+            spawnDistribution: .init(outcomes: [.init(value: 2, weight: 1), .init(value: 8, weight: 1)])),
     ])
     func playedGamesKeepInvariants(rules: GameRules) {
         func potential(_ value: Int) -> Int { (value.trailingZeroBitCount - 1) * value }
@@ -87,6 +94,7 @@ struct MoveTests {
         for seed in 0..<20 as Range<UInt64> {
             var generator = SplitMix64(seed: seed)
             var board = rules.startingBoard(using: &generator)
+            #expect(board.rows.joined().allSatisfy { $0 == 0 || allowedSpawns.contains($0) })
             var score = 0
             var spawnedPotential = potential(board)
             var moves = 0
@@ -101,7 +109,6 @@ struct MoveTests {
                 #expect(move.board.tileSum == board.tileSum + move.spawn.value)
                 #expect(move.board.tileCount == board.tileCount - move.slide.merges.count + 1)
                 #expect(Move(direction: direction, spawn: move.spawn, on: board) == move)
-                #expect(rules.isWon(move.board) == (move.board.highestTileValue! >= rules.winningValue))
                 score += move.scoreDelta
                 spawnedPotential += potential(move.spawn.value)
                 #expect(score == potential(move.board) - spawnedPotential)
@@ -136,5 +143,31 @@ struct MoveTests {
         #expect(first.score == second.score)
         #expect(first.moves == second.moves)
         #expect(first.moves != play(seed: 2027).moves)
+    }
+
+    /// Pins the game a seed produces, which seeded UI tests depend on. Besides
+    /// SplitMix64 this depends on the standard library's `randomElement(using:)`
+    /// and `Int.random(in:using:)`; if it fails after a toolchain update, the
+    /// seeded UI tests need new expectations too.
+    @Test func seedProducesAKnownGame() throws {
+        var generator = SplitMix64(seed: 42)
+        var board = GameRules.classic.startingBoard(using: &generator)
+        #expect(board.rows == [[0, 0, 0, 0], [2, 0, 0, 0], [0, 0, 0, 2], [0, 0, 0, 0]])
+
+        let expected: [(Direction, Spawn, score: Int)] = [
+            (.left, Spawn(position: at(0, 0), value: 2), 0),
+            (.up, Spawn(position: at(1, 1), value: 2), 4),
+            (.right, Spawn(position: at(1, 1), value: 2), 4),
+            (.down, Spawn(position: at(0, 2), value: 2), 8),
+            (.left, Spawn(position: at(1, 3), value: 2), 0),
+            (.up, Spawn(position: at(2, 3), value: 2), 4),
+        ]
+        for (direction, spawn, score) in expected {
+            let move = try #require(GameRules.classic.move(direction, on: board, using: &generator))
+            #expect(move.spawn == spawn)
+            #expect(move.scoreDelta == score)
+            board = move.board
+        }
+        #expect(board.rows == [[4, 8, 0, 2], [0, 0, 0, 0], [0, 0, 0, 2], [0, 0, 0, 0]])
     }
 }

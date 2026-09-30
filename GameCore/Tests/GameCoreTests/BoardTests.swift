@@ -53,11 +53,13 @@ struct BoardTests {
     @Test func acceptsLargestTileValue() throws {
         let board = try Board(rows: [[Board.maxTileValue, 0], [0, 0]])
         #expect(board.highestTileValue == Board.maxTileValue)
-        #expect(Board.maxTileValue == 1 << 62)
+        #expect(Board.maxTileValue == 1 << 48)
     }
 
     @Test(arguments: [
-        ([[Int]](), BoardError.noRows),
+        ([[Int]](), BoardError.unsupportedSize(0)),
+        (Array(repeating: Array(repeating: 0, count: 17), count: 17), .unsupportedSize(17)),
+        ([[1 << 49, 0], [0, 0]], .invalidValue(1 << 49, at: Position(row: 0, column: 0))),
         ([[2, 0], [0]], .notSquare),
         ([[2, 0, 0], [0, 0, 0]], .notSquare),
         ([[2, 3], [0, 0]], .invalidValue(3, at: Position(row: 0, column: 1))),
@@ -99,6 +101,27 @@ struct BoardTests {
         #expect(board.description == "  2   .\n128   4")
     }
 
+    @Test func largestBoardIsAccepted() throws {
+        let board = try Board(rows: Array(repeating: Array(repeating: 2, count: 16), count: 16))
+        #expect(board.size == Board.maxSize)
+        #expect(Board(size: 16).size == 16)
+    }
+
+    /// The limits keep sums far from overflow: the largest board full of
+    /// tiles one below the maximum merges them all in one slide.
+    @Test func largestSumsDontOverflow() throws {
+        let almostMax = Board.maxTileValue / 2
+        let board = try Board(rows: Array(repeating: Array(repeating: almostMax, count: 16), count: 16))
+        let result = board.sliding(.left)
+        #expect(result.merges.count == 128)
+        #expect(result.scoreDelta == 128 * Board.maxTileValue)
+        #expect(result.board.tileSum == board.tileSum)
+        #expect(result.board.sliding(.left).isNoOp)  // tiles at the maximum don't merge
+        let full = try Board(rows: Array(repeating: Array(repeating: Board.maxTileValue, count: 16), count: 16))
+        #expect(!full.hasAvailableMoves)
+        #expect(Direction.allCases.allSatisfy { full.sliding($0).isNoOp })
+    }
+
     @Test func codableRoundTrip() throws {
         let board = try Board(rows: [[2, 0, 4], [0, 1 << 20, 0], [Board.maxTileValue, 0, 2]])
         let data = try JSONEncoder().encode(board)
@@ -124,6 +147,15 @@ struct BoardTests {
     func positionCodableRoundTrip(position: Position) throws {
         let data = try JSONEncoder().encode(position)
         #expect(try JSONDecoder().decode(Position.self, from: data) == position)
+    }
+
+    /// Guards the persisted format of positions.
+    @Test func positionEncodesAsRowAndColumn() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let json = String(decoding: try encoder.encode(Position(row: 2, column: 3)), as: UTF8.self)
+        #expect(json == #"{"column":3,"row":2}"#)
+        #expect(try JSONDecoder().decode(Position.self, from: Data(json.utf8)) == Position(row: 2, column: 3))
     }
 
     @Test(arguments: Direction.allCases)

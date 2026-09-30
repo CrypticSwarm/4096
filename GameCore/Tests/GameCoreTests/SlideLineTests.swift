@@ -69,9 +69,9 @@ struct SlideLineTests {
         Case([2, 2, 4, 0, 4, 8, 8], [4, 8, 16, 0, 0, 0, 0], score: 28),
         // Large values, up to the largest tile, which never merges.
         Case([1 << 30, 1 << 30, 0, 0], [1 << 31, 0, 0, 0], score: 1 << 31),
-        Case([1 << 61, 0, 1 << 61, 2], [1 << 62, 2, 0, 0], score: 1 << 62),
-        Case([1 << 62, 1 << 62, 0, 0], [1 << 62, 1 << 62, 0, 0]),
-        Case([0, 1 << 62, 0, 1 << 62], [1 << 62, 1 << 62, 0, 0]),
+        Case([1 << 47, 0, 1 << 47, 2], [1 << 48, 2, 0, 0], score: 1 << 48),
+        Case([1 << 48, 1 << 48, 0, 0], [1 << 48, 1 << 48, 0, 0]),
+        Case([0, 1 << 48, 0, 1 << 48], [1 << 48, 1 << 48, 0, 0]),
     ]
 
     @Test(arguments: cases)
@@ -98,14 +98,13 @@ struct SlideLineTests {
 
         let result = board.sliding(.left)
 
-        let position = { Position(row: 0, column: $0) }
         #expect(
             result.movements == [
-                TileMovement(from: position(0), to: position(0), value: 2, merged: true),
-                TileMovement(from: position(1), to: position(0), value: 2, merged: true),
-                TileMovement(from: position(2), to: position(1), value: 2, merged: false),
+                TileMovement(from: at(0, 0), to: at(0, 0), value: 2, didMerge: true),
+                TileMovement(from: at(0, 1), to: at(0, 0), value: 2, didMerge: true),
+                TileMovement(from: at(0, 2), to: at(0, 1), value: 2, didMerge: false),
             ])
-        #expect(result.merges == [TileMerge(position: position(0), value: 4)])
+        #expect(result.merges == [TileMerge(position: at(0, 0), value: 4)])
     }
 
     @Test func mergeAcrossGapMovements() throws {
@@ -116,13 +115,13 @@ struct SlideLineTests {
         #expect(
             result.movements == [
                 TileMovement(
-                    from: Position(row: 0, column: 1), to: Position(row: 0, column: 0), value: 4, merged: true),
+                    from: at(0, 1), to: at(0, 0), value: 4, didMerge: true),
                 TileMovement(
-                    from: Position(row: 0, column: 3), to: Position(row: 0, column: 0), value: 4, merged: true),
+                    from: at(0, 3), to: at(0, 0), value: 4, didMerge: true),
                 TileMovement(
-                    from: Position(row: 3, column: 3), to: Position(row: 3, column: 0), value: 2, merged: false),
+                    from: at(3, 3), to: at(3, 0), value: 2, didMerge: false),
             ])
-        #expect(result.merges == [TileMerge(position: Position(row: 0, column: 0), value: 8)])
+        #expect(result.merges == [TileMerge(position: at(0, 0), value: 8)])
         #expect(result.scoreDelta == 8)
     }
 }

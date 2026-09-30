@@ -58,9 +58,30 @@ struct SpawnTests {
         }
     }
 
+    /// Uniformity where the empty cells are scattered between tiles, which
+    /// catches pickers biased by the board layout.
+    @Test func positionsUniformOnPartlyFilledBoard() throws {
+        let board = try Board(rows: [
+            [2, 4, 8, 0],
+            [0, 16, 32, 64],
+            [2, 4, 0, 8],
+            [16, 32, 64, 0],
+        ])
+        let draws = 10_000
+        var generator = SplitMix64(seed: 404)
+        var counts: [Position: Int] = [:]
+        for _ in 0..<draws {
+            counts[SpawnDistribution.classic.randomSpawn(on: board, using: &generator)!.position, default: 0] += 1
+        }
+        #expect(Set(counts.keys) == Set(board.emptyPositions))
+        for count in counts.values {
+            #expect((2_300...2_700).contains(count))  // expected 2500, σ ≈ 43
+        }
+    }
+
     @Test func customDistribution() {
-        let onlyFours = SpawnDistribution([.init(value: 4, weight: 1)])
-        let evenTwosAndEights = SpawnDistribution([.init(value: 2, weight: 5), .init(value: 8, weight: 5)])
+        let onlyFours = SpawnDistribution(outcomes: [.init(value: 4, weight: 1)])
+        let evenTwosAndEights = SpawnDistribution(outcomes: [.init(value: 2, weight: 5), .init(value: 8, weight: 5)])
         var generator = SplitMix64(seed: 12)
         var eights = 0
         for _ in 0..<2_000 {
@@ -70,6 +91,21 @@ struct SpawnTests {
             eights += value == 8 ? 1 : 0
         }
         #expect((850...1_150).contains(eights))  // expected 1000, σ ≈ 22
+    }
+
+    @Test func threeOutcomeDistribution() {
+        let distribution = SpawnDistribution(outcomes: [
+            .init(value: 2, weight: 1), .init(value: 4, weight: 2), .init(value: 8, weight: 7),
+        ])
+        var generator = SplitMix64(seed: 13)
+        var counts: [Int: Int] = [:]
+        for _ in 0..<10_000 {
+            counts[distribution.randomSpawn(on: Board(size: 3), using: &generator)!.value, default: 0] += 1
+        }
+        #expect(Set(counts.keys) == [2, 4, 8])
+        #expect((850...1_150).contains(counts[2, default: 0]))  // expected 1000, σ = 30
+        #expect((1_800...2_200).contains(counts[4, default: 0]))  // expected 2000, σ = 40
+        #expect((6_770...7_230).contains(counts[8, default: 0]))  // expected 7000, σ ≈ 46
     }
 
     @Test func sameSeedSameSpawns() {
@@ -112,8 +148,16 @@ struct SpawnTests {
         #expect(try JSONDecoder().decode(Spawn.self, from: JSONEncoder().encode(spawn)) == spawn)
     }
 
+    /// Guards the persisted format of spawns, which sessions record for redo.
+    @Test func spawnDecodesFromStableJSON() throws {
+        let json = #"{"position":{"row":2,"column":3},"value":4}"#
+        #expect(
+            try JSONDecoder().decode(Spawn.self, from: Data(json.utf8))
+                == Spawn(position: Position(row: 2, column: 3), value: 4))
+    }
+
     @Test func distributionCodableRoundTrip() throws {
-        let custom = SpawnDistribution([.init(value: 2, weight: 3), .init(value: 1 << 10, weight: 1)])
+        let custom = SpawnDistribution(outcomes: [.init(value: 2, weight: 3), .init(value: 1 << 10, weight: 1)])
         for distribution in [SpawnDistribution.classic, custom] {
             let data = try JSONEncoder().encode(distribution)
             #expect(try JSONDecoder().decode(SpawnDistribution.self, from: data) == distribution)

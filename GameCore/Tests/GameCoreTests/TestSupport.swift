@@ -96,7 +96,17 @@ extension Direction {
     }
 }
 
+/// Shorthand for a position in test tables.
+func at(_ row: Int, _ column: Int) -> Position {
+    Position(row: row, column: column)
+}
+
 extension Board {
+    /// The board rotated a quarter turn clockwise.
+    var rotatedClockwise: Board {
+        try! Board(rows: GameCoreTests.rotatedClockwise(rows))
+    }
+
     /// The sum of all tile values.
     var tileSum: Int {
         rows.joined().reduce(0, +)

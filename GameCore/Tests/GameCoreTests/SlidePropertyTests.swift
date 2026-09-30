@@ -17,22 +17,19 @@ struct SlidePropertyTests {
         }
     }
 
-    @Test func invariantsHoldAlongPlayedGames() {
-        // Boards reached in play (with spawns) rather than uniformly random ones.
-        var generator = SplitMix64(seed: 99)
-        for size in 3...5 {
-            var board = Board(size: size)
-            for _ in 0..<500 {
-                if let empty = board.emptyPositions.randomElement(using: &generator) {
-                    var rows = board.rows
-                    rows[empty.row][empty.column] = Int.random(in: 0..<10, using: &generator) == 0 ? 4 : 2
-                    board = try! Board(rows: rows)
+    @Test(arguments: 3...5)
+    func invariantsHoldAlongPlayedGames(size: Int) {
+        // Boards reached in play rather than uniformly random ones.
+        let rules = GameRules(id: "\(size)", boardSize: size)
+        var generator = SplitMix64(seed: 99 + UInt64(size))
+        for _ in 0..<5 {
+            var board = rules.startingBoard(using: &generator)
+            while board.hasAvailableMoves {
+                for direction in Direction.allCases {
+                    checkInvariants(of: board.sliding(direction), from: board, toward: direction)
                 }
                 let direction = Direction.allCases.randomElement(using: &generator)!
-                let result = board.sliding(direction)
-                checkInvariants(of: result, from: board, toward: direction)
-                if !board.hasAvailableMoves { break }
-                board = result.board
+                board = rules.move(direction, on: board, using: &generator)?.board ?? board
             }
         }
     }
@@ -45,10 +42,16 @@ struct SlidePropertyTests {
         let after = result.board
         let context = Comment(rawValue: "\(direction) on\n\(board)\ngave\n\(after)")
 
-        // Conservation and scoring.
+        // Agreement with the reference model on independently extracted lines.
+        let reference = lines(of: board.rows, toward: direction).map(referenceSlide)
+        #expect(
+            after.rows == rows(fromLines: reference.map(\.row), toward: direction), context,
+            sourceLocation: sourceLocation)
+        #expect(result.scoreDelta == reference.map(\.score).reduce(0, +), context, sourceLocation: sourceLocation)
+
+        // Conservation.
         #expect(after.size == board.size, context, sourceLocation: sourceLocation)
         #expect(after.tileSum == board.tileSum, context, sourceLocation: sourceLocation)
-        #expect(result.scoreDelta == result.merges.map(\.value).reduce(0, +), context, sourceLocation: sourceLocation)
         #expect(after.tileCount == board.tileCount - result.merges.count, context, sourceLocation: sourceLocation)
 
         // No-op detection.
@@ -78,10 +81,10 @@ struct SlidePropertyTests {
         for (destination, incoming) in arrivals {
             switch incoming.count {
             case 1:
-                #expect(!incoming[0].merged, context, sourceLocation: sourceLocation)
+                #expect(!incoming[0].didMerge, context, sourceLocation: sourceLocation)
                 #expect(after[destination] == incoming[0].value, context, sourceLocation: sourceLocation)
             case 2:
-                #expect(incoming.allSatisfy { $0.merged }, context, sourceLocation: sourceLocation)
+                #expect(incoming.allSatisfy { $0.didMerge }, context, sourceLocation: sourceLocation)
                 #expect(incoming[0].value == incoming[1].value, context, sourceLocation: sourceLocation)
                 #expect(after[destination] == 2 * incoming[0].value, context, sourceLocation: sourceLocation)
                 expectedMerges.append(TileMerge(position: destination, value: 2 * incoming[0].value))
@@ -118,25 +121,9 @@ struct SlidePropertyTests {
                     context, sourceLocation: sourceLocation)
             }
         }
-
-        // Each line of the result is packed against the edge, and any two
-        // neighbors in a line with equal values include a merge result (two
-        // original tiles that meet always merge).
-        let mergedPositions = Set(result.merges.map(\.position))
-        for (lineIndex, values) in lines(of: after.rows, toward: direction).enumerated() {
-            let tileCount = values.count { $0 != 0 }
-            #expect(values.prefix(tileCount).allSatisfy { $0 != 0 }, context, sourceLocation: sourceLocation)
-            for offset in 0..<max(0, tileCount - 1)
-            where values[offset] == values[offset + 1] && values[offset] < Board.maxTileValue {
-                let pair = [offset, offset + 1].map {
-                    position(line: lineIndex, offset: $0, direction, size: board.size)
-                }
-                #expect(pair.contains(where: mergedPositions.contains), context, sourceLocation: sourceLocation)
-            }
-        }
     }
 
-    // Line geometry, written independently of the engine's own mapping.
+    // Line geometry, restated from the definition of each direction.
 
     private func line(of position: Position, _ direction: Direction) -> Int {
         direction == .left || direction == .right ? position.row : position.column
@@ -148,15 +135,6 @@ struct SlidePropertyTests {
         case .right: size - 1 - position.column
         case .up: position.row
         case .down: size - 1 - position.row
-        }
-    }
-
-    private func position(line: Int, offset: Int, _ direction: Direction, size: Int) -> Position {
-        switch direction {
-        case .left: Position(row: line, column: offset)
-        case .right: Position(row: line, column: size - 1 - offset)
-        case .up: Position(row: offset, column: line)
-        case .down: Position(row: size - 1 - offset, column: line)
         }
     }
 }

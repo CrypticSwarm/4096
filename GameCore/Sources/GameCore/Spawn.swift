@@ -57,7 +57,7 @@ public struct SpawnDistribution: Hashable, Codable, Sendable {
     public let outcomes: [Outcome]
 
     /// The original game's distribution: a 2 with probability 0.9, a 4 with 0.1.
-    public static let classic = SpawnDistribution([
+    public static let classic = SpawnDistribution(outcomes: [
         Outcome(value: 2, weight: 9),
         Outcome(value: 4, weight: 1),
     ])
@@ -67,14 +67,14 @@ public struct SpawnDistribution: Hashable, Codable, Sendable {
     /// - Precondition: There is at least one outcome, every value is a valid
     ///   tile value (a power of two from 2 through ``Board/maxTileValue``),
     ///   every weight is positive, and the weights' sum fits in an `Int`.
-    public init(_ outcomes: [Outcome]) {
+    public init(outcomes: [Outcome]) {
         if let problem = Self.problem(with: outcomes) {
             preconditionFailure(problem)
         }
         self.outcomes = outcomes
     }
 
-    /// Decodes a distribution, rejecting outcomes that ``init(_:)`` would.
+    /// Decodes a distribution, rejecting outcomes that ``init(outcomes:)`` would.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let outcomes = try container.decode([Outcome].self, forKey: .outcomes)

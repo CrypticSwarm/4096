@@ -8,10 +8,12 @@
 /// invalid value unrepresentable, and turns a merge into `e + 1` with no
 /// overflow checks. The public API speaks in tile values (`Int`) only.
 ///
-/// Values go up to ``maxTileValue`` (2^62, the largest power of two an `Int`
-/// holds with headroom). Two tiles of that value do not merge. This is
-/// unreachable in play: tiles only grow by merging, and each move adds at most
-/// one spawned tile, so a 2^62 tile takes more than 2^59 moves.
+/// Values go up to ``maxTileValue`` (2^48) and sizes up to ``maxSize`` (16),
+/// which keeps every sum the engine computes, such as a move's score, far from
+/// `Int` overflow even for boards decoded from tampered data. Two tiles of the
+/// largest value don't merge. The limit is unreachable in play: the sum of all
+/// tiles grows only by one spawned tile per move, so with the classic 2s and 4s
+/// a 2^48 tile takes more than 2^46 moves.
 ///
 /// The board is a plain grid of values with no tile identities. Code that
 /// animates tiles tracks identity itself from the ``TileMovement`` list of each
@@ -26,16 +28,19 @@ public struct Board: Hashable, Sendable {
     /// Tile exponents in row-major order: 0 is empty, `e` is a tile of value 2^e.
     var cells: [UInt8]
 
-    /// The largest tile value a board can hold, 2^62.
+    /// The largest tile value a board can hold, 2^48.
     public static let maxTileValue = 1 << Int(maxExponent)
 
-    static let maxExponent: UInt8 = 62
+    /// The largest number of rows (and columns) a board can have.
+    public static let maxSize = 16
+
+    static let maxExponent: UInt8 = 48
 
     /// Creates an empty board with `size` rows and `size` columns.
     ///
-    /// - Precondition: `size` is at least 1.
+    /// - Precondition: `size` is between 1 and ``maxSize``.
     public init(size: Int) {
-        precondition(size > 0, "A board needs at least one cell")
+        precondition((1...Self.maxSize).contains(size), "Board size \(size) is outside 1...\(Self.maxSize)")
         self.init(size: size, cells: Array(repeating: 0, count: size * size))
     }
 
@@ -49,12 +54,12 @@ public struct Board: Hashable, Sendable {
     ///         [8, 0, 0, 0],
     ///     ])
     ///
-    /// - Throws: ``BoardError`` if there are no rows, the rows don't form a
-    ///   square, or a value is neither 0 nor a power of two from 2 through
-    ///   ``maxTileValue``.
+    /// - Throws: ``BoardError`` if the number of rows isn't between 1 and
+    ///   ``maxSize``, the rows don't form a square, or a value is neither 0 nor
+    ///   a power of two from 2 through ``maxTileValue``.
     public init(rows: [[Int]]) throws(BoardError) {
         let size = rows.count
-        guard size > 0 else { throw .noRows }
+        guard (1...Self.maxSize).contains(size) else { throw .unsupportedSize(size) }
         var cells: [UInt8] = []
         cells.reserveCapacity(size * size)
         for (row, values) in rows.enumerated() {
@@ -206,8 +211,8 @@ extension Board: CustomStringConvertible {
 
 /// Why ``Board/init(rows:)`` rejected its input.
 public enum BoardError: Error, Hashable, Sendable {
-    /// There were no rows.
-    case noRows
+    /// The number of rows isn't between 1 and ``Board/maxSize``.
+    case unsupportedSize(Int)
     /// Some row's length differs from the number of rows.
     case notSquare
     /// A value is neither 0 nor a power of two from 2 through ``Board/maxTileValue``.

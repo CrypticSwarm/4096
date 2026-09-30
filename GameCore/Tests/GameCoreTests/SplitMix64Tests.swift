@@ -39,6 +39,13 @@ struct SplitMix64Tests {
         #expect((0..<10).map { _ in first.next() } != (0..<10).map { _ in second.next() })
     }
 
+    /// Guards the persisted format: the state is the seed plus one increment
+    /// per draw.
+    @Test func decodesFromStableJSON() throws {
+        let generator = try JSONDecoder().decode(SplitMix64.self, from: Data(#"{"state":7}"#.utf8))
+        #expect(generator == SplitMix64(seed: 7))
+    }
+
     @Test func codableRoundTripResumesSequence() throws {
         var generator = SplitMix64(seed: 7)
         _ = (0..<5).map { _ in generator.next() }

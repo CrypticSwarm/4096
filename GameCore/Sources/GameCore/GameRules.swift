@@ -7,7 +7,7 @@
 public struct GameRules: Identifiable, Hashable, Codable, Sendable {
     /// A stable identifier for the variant, such as `"classic"`, for keying
     /// data like high scores. Keep it unchanged for as long as the variant's
-    /// parameters stay the same.
+    /// parameters stay the same, and don't reuse it for other parameters.
     public let id: String
     /// The number of rows and of columns.
     public let boardSize: Int
@@ -19,7 +19,7 @@ public struct GameRules: Identifiable, Hashable, Codable, Sendable {
     public let spawnDistribution: SpawnDistribution
 
     /// The board sizes rules may use.
-    public static let supportedBoardSizes = 2...16
+    public static let supportedBoardSizes = 2...Board.maxSize
 
     /// The classic game: a 4×4 board, two starting tiles and the classic spawn
     /// distribution, played to a 4096 tile.
@@ -38,20 +38,23 @@ public struct GameRules: Identifiable, Hashable, Codable, Sendable {
         startingTileCount: Int = 2,
         spawnDistribution: SpawnDistribution = .classic
     ) {
-        if let problem = Self.problem(
-            id: id, boardSize: boardSize, winningValue: winningValue, startingTileCount: startingTileCount)
-        {
-            preconditionFailure(problem)
-        }
         self.id = id
         self.boardSize = boardSize
         self.winningValue = winningValue
         self.startingTileCount = startingTileCount
         self.spawnDistribution = spawnDistribution
+        if let problem {
+            preconditionFailure(problem)
+        }
     }
 
-    /// Decodes rules, rejecting parameters that ``init(id:boardSize:winningValue:startingTileCount:spawnDistribution:)``
+    /// Decodes rules, rejecting parameters that
+    /// ``init(id:boardSize:winningValue:startingTileCount:spawnDistribution:)``
     /// would.
+    ///
+    /// Every key is required. A parameter added later must be decoded with
+    /// `decodeIfPresent` and default to its classic value, so that saved rules
+    /// from earlier versions still load.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -59,11 +62,16 @@ public struct GameRules: Identifiable, Hashable, Codable, Sendable {
         winningValue = try container.decode(Int.self, forKey: .winningValue)
         startingTileCount = try container.decode(Int.self, forKey: .startingTileCount)
         spawnDistribution = try container.decode(SpawnDistribution.self, forKey: .spawnDistribution)
-        if let problem = Self.problem(
-            id: id, boardSize: boardSize, winningValue: winningValue, startingTileCount: startingTileCount)
-        {
+        if let problem {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: problem))
         }
+    }
+
+    /// Whether `board` can be played under these rules: its size is
+    /// ``boardSize``. Use it to validate a board restored from storage or
+    /// built for a test before playing on it.
+    public func accepts(_ board: Board) -> Bool {
+        board.size == boardSize
     }
 
     /// Returns the board a new game starts with: ``startingTileCount`` tiles
@@ -71,15 +79,15 @@ public struct GameRules: Identifiable, Hashable, Codable, Sendable {
     public func startingBoard(using generator: inout some RandomNumberGenerator) -> Board {
         var board = Board(size: boardSize)
         for _ in 0..<startingTileCount {
-            if let spawn = spawnDistribution.randomSpawn(on: board, using: &generator) {
-                board = board.placing(spawn)
-            }
+            // Validation guarantees startingTileCount fits the board.
+            board = board.placing(spawnDistribution.randomSpawn(on: board, using: &generator)!)
         }
         return board
     }
 
-    /// Whether `board` has a tile of at least ``winningValue``.
-    public func isWon(_ board: Board) -> Bool {
+    /// Whether `board` is winning under these rules: it has a tile of at
+    /// least ``winningValue``.
+    public func isWinning(_ board: Board) -> Bool {
         (board.highestTileValue ?? 0) >= winningValue
     }
 
@@ -88,22 +96,27 @@ public struct GameRules: Identifiable, Hashable, Codable, Sendable {
     ///
     /// - Returns: The move, or `nil` if sliding doesn't change the board. Such
     ///   a swipe isn't a move: nothing spawns and `generator` isn't used.
+    /// - Precondition: ``accepts(_:)`` is `true` for `board`.
     public func move(
         _ direction: Direction, on board: Board, using generator: inout some RandomNumberGenerator
     ) -> Move? {
+        precondition(accepts(board), "A \(board.size)×\(board.size) board doesn't fit rules \"\(id)\"")
         let slide = board.sliding(direction)
-        guard !slide.isNoOp,
-            let spawn = spawnDistribution.randomSpawn(on: slide.board, using: &generator)
-        else { return nil }
+        guard !slide.isNoOp else { return nil }
+        // A slide that changes the board always leaves a cell free: a merge
+        // removes a tile, and without merges tiles can only have moved if a
+        // cell was empty, and the number of tiles stays the same.
+        let spawn = spawnDistribution.randomSpawn(on: slide.board, using: &generator)!
         return Move(direction: direction, slide: slide, spawn: spawn)
     }
 
-    private static func problem(id: String, boardSize: Int, winningValue: Int, startingTileCount: Int) -> String? {
+    /// Why these parameters are invalid, or `nil` if they are valid.
+    private var problem: String? {
         if id.isEmpty {
             return "Rules need a non-empty id"
         }
-        if !supportedBoardSizes.contains(boardSize) {
-            return "Board size \(boardSize) is outside \(supportedBoardSizes)"
+        if !Self.supportedBoardSizes.contains(boardSize) {
+            return "Board size \(boardSize) is outside \(Self.supportedBoardSizes)"
         }
         if Board.exponent(ofTileValue: winningValue) == nil {
             return "Winning value \(winningValue) is not a valid tile value"
