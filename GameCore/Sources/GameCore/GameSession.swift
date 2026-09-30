@@ -101,9 +101,11 @@ public struct GameSession: Hashable, Sendable {
     ///   - seed: Seeds the generator that draws the tiles moves spawn.
     ///   - highScore: The best score reached in this variant so far; the
     ///     session's high score is the larger of this and `score`.
-    /// - Precondition: `rules` accept `board`, and neither score is negative.
+    /// - Precondition: `rules` accept `board`, `board` has a tile, and neither
+    ///   score is negative.
     public init(rules: GameRules, board: Board, score: Int = 0, seed: UInt64, highScore: Int = 0) {
         precondition(rules.accepts(board), "A \(board.size)×\(board.size) board doesn't fit rules \"\(rules.id)\"")
+        precondition(board.tileCount > 0, "A game needs a tile on the board")
         precondition(score >= 0 && highScore >= 0, "Scores can't be negative")
         self.rules = rules
         self.board = board

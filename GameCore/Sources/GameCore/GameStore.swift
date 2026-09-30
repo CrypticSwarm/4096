@@ -55,9 +55,9 @@ public struct GameStore: Sendable {
     /// Returns the saved game of the variant `rules` describe, or a new game
     /// if there is none or it can't be restored.
     ///
-    /// A saved game is restored only if it was saved with the same rules. In
-    /// either case the session's high score is the best of the saved game's
-    /// and the stored high score.
+    /// A saved game is restored only if it was saved with the same rules, and
+    /// its high score is raised to the stored one if that is higher. A new
+    /// game starts with the stored high score.
     ///
     /// - Parameter newGameSeed: Seeds the new game, if one is needed.
     /// - Throws: If the storage fails to read, which may be temporary: the app
@@ -104,7 +104,7 @@ public struct GameStore: Sendable {
     }
 
     /// The stored high score of the variant `rules` describe, or 0 if there
-    /// is none or the high scores can't be decoded.
+    /// is none, or the high scores can't be decoded or have a later version.
     ///
     /// - Throws: If the storage fails to read.
     public func highScore(for rules: GameRules) throws -> Int {

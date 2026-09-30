@@ -90,7 +90,8 @@ struct GameSessionTests {
     }
 
     @Test func highScoreIsAtLeastTheStartingScore() {
-        #expect(GameSession(rules: .classic, board: Board(size: 4), score: 50, seed: 1, highScore: 20).highScore == 50)
+        let board = try! Board(rows: [[2, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        #expect(GameSession(rules: .classic, board: board, score: 50, seed: 1, highScore: 20).highScore == 50)
     }
 
     @Test func gameOverWhenNoSwipeChangesTheBoard() throws {
