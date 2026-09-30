@@ -22,8 +22,9 @@ Run `make format` then `make check` before every commit.
 
 ## Layout
 
-- `GameCore/`: Swift package for all game logic (engine, session and persistence
-  go here as they are added; today it has only a placeholder).
+- `GameCore/`: Swift package for all game logic. It has the engine (board,
+  slides, spawns, rules; see README.md "Game engine"); session and persistence
+  go here as they are added.
 - `Game4096/`: SwiftUI app. `Game4096Tests/`: app unit tests. `Game4096UITests/`: XCUITests.
 - `Shared/`: compiled into both the app and the UI tests (accessibility identifiers,
   later launch-argument keys).

@@ -4,8 +4,9 @@ A native iOS take on 2048 where the goal tile is 4096. Built with SwiftUI; the
 game rules live in a platform-independent Swift package so they can be
 developed and tested without a Mac.
 
-Status: scaffolding. The app shows a placeholder title screen; the game engine,
-session (undo/redo, persistence, high scores) and game UI are still to come.
+Status: the game engine is done. The app still shows a placeholder title
+screen; the session (undo/redo, persistence, high scores) and game UI are still
+to come.
 
 ## Repository layout
 
@@ -20,6 +21,21 @@ session (undo/redo, persistence, high scores) and game UI are still to come.
 | `Makefile` | Entry points for local work and CI (`make help`). |
 | `scripts/` | Helpers used by `make` and CI. |
 | `.github/workflows/` | CI: `core.yml` (Linux) and `ios.yml` (macOS). |
+
+## Game engine
+
+`GameCore` implements the rules of the original 2048 as pure value types:
+
+- `Board`: a square grid of tile values (row 0 is the top row). `sliding(_:)`
+  slides and merges in a `Direction` and returns a `SlideResult` describing
+  where every tile went, for animation. `hasAvailableMoves` is `false` when the
+  game is over.
+- `GameRules`: a variant's parameters (board size, winning tile, starting
+  tiles, spawn distribution) with a stable `id`; `GameRules.classic` is 4×4
+  played to 4096. `move(_:on:using:)` slides and spawns a random tile, returning
+  a `Move`, or `nil` when the swipe changes nothing.
+- `Move`: a slide plus its `Spawn`. The direction and spawn replay it exactly.
+- `SplitMix64`: a seedable random number generator, so games are reproducible.
 
 ## Local development
 
