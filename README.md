@@ -36,6 +36,10 @@ to come.
   a `Move`, or `nil` when the swipe changes nothing.
 - `Move`: a slide plus its `Spawn`. The direction and spawn replay it exactly.
 - `SplitMix64`: a seedable random number generator, so games are reproducible.
+- `TileLayout`: the board's tiles with stable ids for animation. `apply(_:)`
+  follows a `Move` and returns a `TileTransition` (which tiles slid where,
+  which merged, which spawned); `reset(to:)` renumbers all tiles after any
+  other change, such as a new game.
 
 ## Local development
 
