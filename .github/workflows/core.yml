@@ -4,11 +4,12 @@ name: Core
 on:
   push:
     # Every pushed branch, PR branches included, so no pull_request trigger.
-    branches: ["**"]
+    # ci-screenshots only holds screenshots published by ios.yml.
+    branches: ["**", "!ci-screenshots"]
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:

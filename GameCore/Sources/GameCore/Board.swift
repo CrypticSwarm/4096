@@ -15,8 +15,8 @@
 /// tiles grows only by one spawned tile per move, so with the classic 2s and 4s
 /// a 2^48 tile takes about 2^46 moves.
 ///
-/// The board is a plain grid of values with no tile identities. Code that
-/// animates tiles tracks identity itself from the ``TileMovement`` list of each
+/// The board is a plain grid of values with no tile identities; ``TileLayout``
+/// tracks them for animation from the ``TileMovement`` list of each
 /// ``SlideResult``.
 ///
 /// Positions use row 0 for the top row and column 0 for the leftmost column
@@ -217,4 +217,6 @@ public enum BoardError: Error, Hashable, Sendable {
     case notSquare
     /// A value is neither 0 nor a power of two from 2 through ``Board/maxTileValue``.
     case invalidValue(Int, at: Position)
+    /// Text given to ``Board/init(notation:)`` isn't an integer.
+    case unreadableValue(String)
 }

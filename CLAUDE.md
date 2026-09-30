@@ -8,7 +8,11 @@ Native iOS game "4096" (2048 with a 4096 goal tile). See README.md for details.
   `swift` is not on PATH, try `export PATH=$HOME/.local/swift/usr/bin:$PATH`.
 - Only `GameCore` can be built and tested locally. App and UI test code is
   only compiled by the `iOS` GitHub Actions workflow (macOS runner); check its
-  annotations and job summary. Screenshots come from its `screenshots` artifact.
+  annotations and job summary. It runs on every branch push. Its UI test
+  screenshots are published to the `ci-screenshots` branch at
+  `<branch>/<short-sha>/<name>.png`, where `<name>` is the attachment's name
+  (readable via raw.githubusercontent.com), and uploaded as the `screenshots`
+  artifact.
 
 ## Commands
 
@@ -26,8 +30,9 @@ Run `make format` then `make check` before every commit.
   slides, spawns, rules; see README.md "Game engine"); session and persistence
   go here as they are added.
 - `Game4096/`: SwiftUI app. `Game4096Tests/`: app unit tests. `Game4096UITests/`: XCUITests.
-- `Shared/`: compiled into both the app and the UI tests (accessibility identifiers,
-  later launch-argument keys).
+- `Shared/`: compiled into both the app and the UI tests (accessibility identifiers).
+  Launch arguments are parsed and built by `LaunchConfiguration` in `GameCore`,
+  which the UI tests also link (see README.md "Launch arguments").
 - `project.yml`: XcodeGen spec; never commit a generated `.xcodeproj`.
 - `.github/workflows/`: `core.yml` (Linux), `ios.yml` (macOS simulator).
 - `scripts/`: helpers called by the Makefile and CI.

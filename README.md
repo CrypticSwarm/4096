@@ -4,9 +4,9 @@ A native iOS take on 2048 where the goal tile is 4096. Built with SwiftUI; the
 game rules live in a platform-independent Swift package so they can be
 developed and tested without a Mac.
 
-Status: the game engine is done. The app still shows a placeholder title
-screen; the session (undo/redo, persistence, high scores) and game UI are still
-to come.
+Status: the game engine is done, and the app plays the classic 4×4 game with
+2048's look and animations. The session (undo/redo, persistence, high scores),
+score display and game-over screens are still to come.
 
 ## Repository layout
 
@@ -36,6 +36,23 @@ to come.
   a `Move`, or `nil` when the swipe changes nothing.
 - `Move`: a slide plus its `Spawn`. The direction and spawn replay it exactly.
 - `SplitMix64`: a seedable random number generator, so games are reproducible.
+- `TileLayout`: the board's tiles with stable ids for animation. `apply(_:)`
+  follows a `Move` and returns a `TileTransition` (which tiles slid where,
+  which merged, which spawned); `reset(to:)` renumbers all tiles after any
+  other change, such as a new game.
+
+## Launch arguments
+
+For UI tests and development, the app reads these launch arguments (parsed by
+`LaunchConfiguration` in `GameCore`; others are ignored):
+
+| Argument | Effect |
+| --- | --- |
+| `-seed <UInt64>` | Seeds the random number generator, so spawns (and the starting board, without `-board`) are reproducible. |
+| `-board <notation>` | Starts from this board instead of a new game. Rows top to bottom separated by `;`, values separated by `,`, 0 for empty, no spaces: `-board "2,2,0,0;0,0,0,0;0,0,0,0;0,0,0,4"`. The board's size (2 to 16) picks the game's board size. |
+
+The board element's accessibility value is the current board in the same
+notation, so UI tests can check the exact state.
 
 ## Local development
 
@@ -75,12 +92,28 @@ Pick a different simulator with
 | Workflow | Job | Runs on | Triggers |
 | --- | --- | --- | --- |
 | `Core` (`core.yml`) | Build, test and lint (Linux) | Swift container on Ubuntu | every branch push, manual |
-| `iOS` (`ios.yml`) | Build and test (iOS Simulator) | macOS runner | pull requests, pushes to `master`, manual; skipped when only Markdown, `.editorconfig` or `.swift-format` change |
+| `iOS` (`ios.yml`) | Build and test (iOS Simulator) | macOS runner | every branch push, manual; skipped when only Markdown, `.editorconfig` or `.swift-format` change |
+| `iOS` (`ios.yml`) | Publish screenshots | Ubuntu | after the iOS job, unless the run was cancelled |
 
-Both jobs call the same `make` targets as local development. Failures show up
-as annotations on the commit or pull request and in each run's job summary.
-The iOS job uploads two artifacts: `screenshots` (PNG attachments from the UI
-tests) and `test-results` (the `.xcresult` bundle and raw `xcodebuild` log).
+Neither workflow runs for `ci-screenshots`. Both jobs that build call the same
+`make` targets as local development. Failures show up as annotations on the
+commit and in each run's job summary. The iOS job uploads two artifacts:
+`screenshots` (PNG attachments from the UI tests) and `test-results` (the
+`.xcresult` bundle and raw `xcodebuild` log).
+
+The publish job commits the screenshots to the orphan branch `ci-screenshots`
+under `<branch>/<short-sha>/` (`scripts/ci/publish-screenshots.sh`), so they
+can be viewed without downloading artifacts, e.g.
+`https://raw.githubusercontent.com/CrypticSwarm/4096/ci-screenshots/<branch>/<short-sha>/<name>.png`,
+where `<name>` is the attachment's name in the UI test; a notice annotation
+links the folder. It is the only job with write access, and publishing is
+best effort: it warns instead of failing. The branch only accumulates
+screenshots; delete it whenever it gets large, and the next run recreates it.
+To keep it out of a clone, run
+`git config --add remote.origin.fetch '^refs/heads/ci-screenshots'`.
+
+Since iOS runs on pushes, not pull requests, a push that only changes
+documentation has no iOS run, so a branch's head commit may lack one.
 
 Where versions are pinned:
 
@@ -102,7 +135,8 @@ The app can only be built and run on macOS, so this project relies on CI:
 - Game logic belongs in `GameCore` and is covered by tests that run on Linux
   with `make test` (CI also runs them on the iOS simulator).
 - The app, its unit tests and UI tests run only in the iOS workflow. To see the
-  app, download the `screenshots` artifact from a workflow run.
+  app, open the screenshots published to the `ci-screenshots` branch (or
+  download the `screenshots` artifact) from a workflow run.
 - There is no code signing yet; everything targets the simulator. Getting
   builds onto a device (TestFlight) needs an Apple Developer account and comes
   later.

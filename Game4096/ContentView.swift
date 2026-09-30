@@ -1,15 +1,37 @@
 import GameCore
 import SwiftUI
 
-/// Placeholder root view; replaced by the game screen in a later change.
+/// The game screen: the title, a new game button and the board. Swipes
+/// anywhere on the screen (or arrow keys) move the tiles.
 struct ContentView: View {
+    let model: GameModel
+
     var body: some View {
-        Text(GameInfo.title)
-            .font(.system(size: 64, weight: .bold, design: .rounded))
-            .accessibilityIdentifier(AccessibilityID.title)
+        VStack(spacing: 16) {
+            HStack(alignment: .center) {
+                Text(GameInfo.title)
+                    .font(Theme.titleFont)
+                    .foregroundStyle(Theme.darkText)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier(AccessibilityID.title)
+                Spacer()
+                Button("New Game") { model.newGame() }
+                    .buttonStyle(GameButtonStyle())
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                    .accessibilityIdentifier(AccessibilityID.newGame)
+            }
+            BoardView(layout: model.layout) { model.perform($0) }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.background)
+        .onSwipe { model.perform($0) }
     }
 }
 
 #Preview {
-    ContentView()
+    ContentView(model: GameModel(configuration: LaunchConfiguration(seed: 1)))
 }
