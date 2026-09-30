@@ -66,7 +66,12 @@ jobs:
 
       - name: Job summary
         if: ${{ !cancelled() }}
-        run: make ios-summary >> "$GITHUB_STEP_SUMMARY"
+        # Also printed to the log, and the result line is raised as a notice
+        # annotation: annotations are readable through the API without log
+        # access, so passing counts are visible there too.
+        run: |
+          make ios-summary | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -m1 '^\*\*Result' "$GITHUB_STEP_SUMMARY" | tr -d '*' | sed 's/^/::notice title=iOS tests::/' || true
 
       # Paths match BUILD_DIR, ATTACHMENTS_DIR, RESULT_BUNDLE and XCODEBUILD_LOG
       # in the Makefile.
