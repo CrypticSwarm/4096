@@ -29,7 +29,9 @@ Run `make format` then `make check` before every commit.
 - `GameCore/`: Swift package for all game logic: the engine (board, slides,
   spawns, rules; see README.md "Game engine") and the session with undo/redo,
   high scores and saving (README.md "Game session").
-- `Game4096/`: SwiftUI app. `Game4096Tests/`: app unit tests. `Game4096UITests/`: XCUITests.
+- `Game4096/`: SwiftUI app: `GameModel` wraps the session, its tile layout and
+  saving, and is the only thing views talk to (README.md "App").
+  `Game4096Tests/`: app unit tests. `Game4096UITests/`: XCUITests.
 - `Shared/`: compiled into both the app and the UI tests (accessibility identifiers).
   Launch arguments are parsed and built by `LaunchConfiguration` in `GameCore`,
   which the UI tests also link (see README.md "Launch arguments").
@@ -47,7 +49,10 @@ Run `make format` then `make check` before every commit.
   are deterministic; the app chooses where data is saved.
 - Swift 6 language mode everywhere. Core and app unit tests use Swift Testing
   (`import Testing`); UI tests use XCTest/XCUITest.
-- UI tests find elements by accessibility identifiers from `Shared/AccessibilityID.swift`.
+- UI tests find elements by accessibility identifiers from `Shared/AccessibilityID.swift`,
+  and check the screen against a `GameSession` playing the same moves
+  (`GameUITestCase.assertShows`). They launch with in-memory storage unless a
+  test picks its own storage folder.
 - New files under existing target folders are picked up by XcodeGen automatically;
   new targets or settings go in `project.yml`.
 - Pinned versions (Swift, Xcode, XcodeGen, runner image, simulator) are listed in
