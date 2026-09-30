@@ -17,6 +17,17 @@
 /// be undone, and after undoing two of them and swiping again, the remaining
 /// one and the new swipe can.
 ///
+/// ## Winning
+///
+/// The first time the board has a tile of at least the rules' winning value,
+/// ``shouldPresentWin`` turns `true` so the UI can congratulate the player,
+/// until ``acknowledgeWin()`` (the player chose to keep playing) or the next
+/// move, undo or redo. That happens once per game: ``hasWon`` stays `true`
+/// even if the winning move is undone, so reaching the tile again doesn't
+/// present the win again. Only ``restart()`` starts over. Play goes on after
+/// a win until no move is possible (``isGameOver``); a move can win and end
+/// the game at once.
+///
 /// ## High score
 ///
 /// ``highScore`` is the best score reached in the session's variant, including
@@ -39,6 +50,9 @@ public struct GameSession: Hashable, Sendable {
     private var undoHistory: [HistoryEntry] = []
     /// The moves that can be redone, the next one last.
     private var redoMoves: [MoveRecord] = []
+    /// Whether the game has been won and whether that still needs presenting.
+    private var win: WinState
+
     /// Draws the starting tiles and the tile each move spawns.
     private var generator: SplitMix64
 
@@ -58,6 +72,7 @@ public struct GameSession: Hashable, Sendable {
         self.score = 0
         self.highScore = highScore
         self.generator = generator
+        self.win = WinState(rules: rules, board: board)
     }
 
     /// Starts a game on a given board, for example to set up a test or a
@@ -79,6 +94,7 @@ public struct GameSession: Hashable, Sendable {
         self.score = score
         self.highScore = max(highScore, score)
         self.generator = SplitMix64(seed: seed)
+        self.win = WinState(rules: rules, board: board)
     }
 
     /// The number of moves the session remembers for undo.
@@ -103,6 +119,26 @@ public struct GameSession: Hashable, Sendable {
     /// The number of undone moves that ``redo()`` can play again in a row.
     public var redoCount: Int {
         redoMoves.count
+    }
+
+    /// Whether a tile of at least the rules' winning value has been reached in
+    /// this game. Undo doesn't reset it.
+    public var hasWon: Bool {
+        win != .notWon
+    }
+
+    /// Whether the UI should now tell the player they won and offer to keep
+    /// playing: the game was just won and the player hasn't moved on yet.
+    public var shouldPresentWin: Bool {
+        win == .pending
+    }
+
+    /// Records that the player has seen the win and keeps playing, so
+    /// ``shouldPresentWin`` turns `false`. Does nothing otherwise.
+    public mutating func acknowledgeWin() {
+        if win == .pending {
+            win = .acknowledged
+        }
     }
 
     /// Whether the game is over: no swipe changes the board. Undo may still
@@ -143,6 +179,7 @@ public struct GameSession: Hashable, Sendable {
         redoMoves.append(entry.move)
         board = entry.before.board
         score = entry.before.score
+        acknowledgeWin()
         return move
     }
 
@@ -161,11 +198,12 @@ public struct GameSession: Hashable, Sendable {
     }
 
     /// Starts a new game in the same variant with new starting tiles and a
-    /// score of 0. Moves of the previous game can't be undone or redone. The
-    /// high score is kept.
+    /// score of 0. Moves of the previous game can't be undone or redone, and
+    /// the new game can be won again. The high score is kept.
     public mutating func restart() {
         board = rules.startingBoard(using: &generator)
         score = 0
+        win = WinState(rules: rules, board: board)
         undoHistory.removeAll()
         redoMoves.removeAll()
     }
@@ -180,6 +218,10 @@ public struct GameSession: Hashable, Sendable {
         board = move.board
         score = Self.adding(move.scoreDelta, to: score)
         highScore = max(highScore, score)
+        acknowledgeWin()
+        if win == .notWon, rules.isWinning(board) {
+            win = .pending
+        }
     }
 
     /// Adds points to a score, stopping at `Int.max` rather than trapping, so
@@ -220,4 +262,20 @@ struct MoveRecord: Hashable, Sendable {
 struct HistoryEntry: Hashable, Sendable {
     var before: Snapshot
     var move: MoveRecord
+}
+
+/// Where a game stands with respect to winning.
+enum WinState: String, Hashable, Sendable {
+    /// No winning tile has been reached in this game.
+    case notWon
+    /// A winning tile was just reached and the win hasn't been presented yet.
+    case pending
+    /// The game was won and the player keeps playing.
+    case acknowledged
+
+    /// The state of a game that starts on `board`: a starting board can win
+    /// in variants with a small winning value.
+    init(rules: GameRules, board: Board) {
+        self = rules.isWinning(board) ? .pending : .notWon
+    }
 }
