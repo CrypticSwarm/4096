@@ -1,17 +1,12 @@
+import GameCore
 import XCTest
 
-@MainActor
-final class LaunchUITests: XCTestCase {
-    func testLaunchShowsTitle() {
-        continueAfterFailure = false
-        let app = XCUIApplication()
-        app.launch()
-
-        XCTAssertTrue(app.staticTexts[AccessibilityID.title].waitForExistence(timeout: 10))
-
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Launch"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
+final class LaunchUITests: GameUITestCase {
+    func testLaunchShowsTitleAndTheSeedsStartingBoard() {
+        launch(LaunchConfiguration(seed: 2026))
+        XCTAssertTrue(app.staticTexts[AccessibilityID.title].exists)
+        var generator = SplitMix64(seed: 2026)
+        assertBoard(GameRules.classic.startingBoard(using: &generator).notation)
+        attachScreenshot(named: "launch")
     }
 }

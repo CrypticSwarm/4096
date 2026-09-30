@@ -72,3 +72,5 @@ targets:
       - Shared
     dependencies:
       - target: Game4096
+      # For LaunchConfiguration and Board notation.
+      - package: GameCore
