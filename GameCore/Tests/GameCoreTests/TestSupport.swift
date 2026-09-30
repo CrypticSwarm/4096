@@ -117,3 +117,46 @@ extension Board {
         positions.filter { self[$0] != nil }
     }
 }
+
+/// A classic game and the sessions along it.
+struct PlayedGame {
+    /// `states[n]` is the session after `n` moves.
+    var states: [GameSession]
+    /// `moves[n]` leads from `states[n]` to `states[n + 1]`.
+    var moves: [Move]
+}
+
+/// Plays `count` moves of a classic game from `seed`, swiping in turn and
+/// skipping swipes that change nothing. Sessions are values, so each state is
+/// a snapshot of the whole session, generator included.
+func playedGame(moves count: Int, seed: UInt64 = 99) -> PlayedGame {
+    var session = GameSession(rules: .classic, seed: seed)
+    var game = PlayedGame(states: [session], moves: [])
+    var index = 0
+    while game.moves.count < count {
+        if let move = session.move(Direction.allCases[index % 4]) {
+            game.states.append(session)
+            game.moves.append(move)
+        }
+        index += 1
+    }
+    return game
+}
+
+/// A classic game after twelve moves with two of them undone, so it has a
+/// score, a move to undo and two to redo.
+func midGame() -> GameSession {
+    var session = playedGame(moves: 12).states[12]
+    session.undo()
+    session.undo()
+    return session
+}
+
+/// Swipes in turn until the score is positive.
+func playUntilScored(_ session: inout GameSession) {
+    var index = 0
+    while session.score == 0 {
+        session.move(Direction.allCases[index % 4])
+        index += 1
+    }
+}

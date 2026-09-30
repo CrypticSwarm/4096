@@ -71,9 +71,23 @@ final class GameStorageTests {
         let storage = FileGameStorage(directory: directory)
 
         #expect(throws: (any Error).self) { try storage.data(forKey: "game-classic") }
-        #expect(throws: (any Error).self) { try storage.setData(Data(), forKey: "game-classic") }
-        let store = GameStore(storage: storage)
-        #expect(store.loadSession(for: .classic, newGameSeed: 1) == GameSession(rules: .classic, seed: 1))
+        #expect(throws: (any Error).self) {
+            try GameStore(storage: storage).loadSession(for: .classic, newGameSeed: 1)
+        }
+    }
+
+    /// An atomic write puts a new file in place instead of writing into the
+    /// old one, so a second link to the old file keeps the old data.
+    @Test func writesReplaceTheFileAtomically() throws {
+        let storage = FileGameStorage(directory: directory)
+        try storage.setData(Data("old".utf8), forKey: "game-classic")
+        let link = directory.appendingPathComponent("link")
+        try FileManager.default.linkItem(at: directory.appendingPathComponent("game-classic.json"), to: link)
+
+        try storage.setData(Data("new".utf8), forKey: "game-classic")
+
+        #expect(try Data(contentsOf: link) == Data("old".utf8))
+        #expect(try storage.data(forKey: "game-classic") == Data("new".utf8))
     }
 
     @Test func unwritableDirectoryThrows() throws {
@@ -88,11 +102,11 @@ final class GameStorageTests {
     }
 
     @Test func storeRoundTripsThroughFiles() throws {
-        let session = GameSessionCodingTests.midGame()
+        let session = midGame()
         try GameStore(storage: FileGameStorage(directory: directory)).save(session)
 
         let store = GameStore(storage: FileGameStorage(directory: directory))
-        #expect(store.loadSession(for: .classic, newGameSeed: 0) == session)
-        #expect(store.highScore(for: .classic) == session.highScore)
+        #expect(try store.loadSession(for: .classic, newGameSeed: 0) == session)
+        #expect(try store.highScore(for: .classic) == session.highScore)
     }
 }

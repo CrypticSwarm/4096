@@ -3,28 +3,21 @@ import GameCore
 import Testing
 
 struct GameSessionCodingTests {
-    /// A classic game after twelve moves with two of them undone, so it has
-    /// both undo and redo history.
-    static func midGame() -> GameSession {
-        var session = UndoRedoTests.play(12)[12]
-        session.undo()
-        session.undo()
-        return session
-    }
-
     static func roundTripped(_ session: GameSession) throws -> GameSession {
         try JSONDecoder().decode(GameSession.self, from: JSONEncoder().encode(session))
     }
 
     @Test func roundTripRestoresHistoryAndContinuesIdentically() throws {
-        var original = Self.midGame()
+        var original = midGame()
         var restored = try Self.roundTripped(original)
         #expect(restored == original)
         #expect(restored.undoCount == 1 && restored.redoCount == 2)
 
         #expect(restored.redo() == original.redo())
-        #expect(restored.undo() == original.undo())
-        #expect(restored.undo() == original.undo())
+        #expect(restored.redo() == original.redo())
+        restored.undo()
+        original.undo()
+        #expect(restored == original)
         for index in 0..<50 {
             let direction = Direction.allCases[index % 4]
             #expect(restored.move(direction) == original.move(direction), "same tiles drawn")
@@ -32,24 +25,6 @@ struct GameSessionCodingTests {
         restored.restart()
         original.restart()
         #expect(restored == original)
-    }
-
-    /// Round trips at every step of random games, including pending wins and
-    /// game over.
-    @Test(arguments: GameSessionPropertyTests.rules)
-    func roundTripsThroughoutRandomGames(rules: GameRules) throws {
-        var session = GameSession(rules: rules, seed: 17)
-        var chooser = SplitMix64(seed: 18)
-        for _ in 0..<300 {
-            switch GameSessionPropertyTests.randomAction(using: &chooser) {
-            case .move: session.move(Direction.allCases.randomElement(using: &chooser)!)
-            case .undo: session.undo()
-            case .redo: session.redo()
-            case .acknowledgeWin: session.acknowledgeWin()
-            case .restart: session.restart()
-            }
-            #expect(try Self.roundTripped(session) == session)
-        }
     }
 
     @Test func pendingWinSurvivesARoundTrip() throws {
@@ -61,17 +36,16 @@ struct GameSessionCodingTests {
         #expect(restored.hasWon && !restored.shouldPresentWin)
     }
 
+    static func jsonObject(_ session: GameSession) throws -> [String: Any] {
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(session)) as! [String: Any]
+    }
+
     /// Encodes `session` and lets `edit` change the JSON object before
     /// decoding it again.
     static func decodeEdited(_ session: GameSession, _ edit: (inout [String: Any]) -> Void) throws -> GameSession {
-        var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(session)) as! [String: Any]
+        var object = try jsonObject(session)
         edit(&object)
         return try JSONDecoder().decode(GameSession.self, from: JSONSerialization.data(withJSONObject: object))
-    }
-
-    @Test func decodingAnUneditedObjectWorks() throws {
-        #expect(Self.midGame().score > 0, "so that edits of the high score below can be invalid")
-        #expect(try Self.decodeEdited(Self.midGame()) { _ in } == Self.midGame())
     }
 
     typealias Edit = @Sendable (inout [String: Any]) -> Void
@@ -84,7 +58,7 @@ struct GameSessionCodingTests {
         case oneMove
         /// Three moves that can be undone and none to redo.
         case undoOnly
-        /// ``GameSessionCodingTests/midGame()``.
+        /// ``midGame()``: one move to undo and two to redo.
         case midGame
 
         var session: GameSession {
@@ -95,8 +69,8 @@ struct GameSessionCodingTests {
             case .oneMove:
                 session.move(.left)
                 return session
-            case .undoOnly: return UndoRedoTests.play(12)[12]
-            case .midGame: return GameSessionCodingTests.midGame()
+            case .undoOnly: return playedGame(moves: 12).states[12]
+            case .midGame: return GameCoreTests.midGame()
             }
         }
     }
@@ -124,7 +98,7 @@ struct GameSessionCodingTests {
             .undoOnly,
             {
                 let other = try! JSONSerialization.jsonObject(
-                    with: JSONEncoder().encode(UndoRedoTests.play(12, seed: 5)[12]))
+                    with: JSONEncoder().encode(playedGame(moves: 12, seed: 5).states[12]))
                 $0["undo"] = editing($0["undo"], at: 0) {
                     $0 = ((other as! [String: Any])["undo"] as! [[String: Any]])[0]
                 }
@@ -149,7 +123,7 @@ struct GameSessionCodingTests {
                 }
             }
         ),
-        ("history too long", .midGame, { $0["redo"] = ($0["redo"] as! [Any]) + ($0["redo"] as! [Any]) }),
+        ("empty board", .fresh, { $0["board"] = Board(size: 4).rows }),
         (
             "redo move that doesn't fit",
             .midGame,
@@ -170,31 +144,34 @@ struct GameSessionCodingTests {
         }
     }
 
+    /// Four undo entries that follow each other and lead to the board are
+    /// still one too many.
     @Test func decodingRejectsAHistoryLongerThanTheLimit() throws {
-        let states = UndoRedoTests.play(4)
-        let entries = (0..<4).map { index in
-            let move = UndoRedoTests.move(from: states[index], to: states[index + 1])
-            return [
-                "before": ["board": states[index].board.rows, "score": states[index].score],
-                "move": [
-                    "direction": move.direction.rawValue,
-                    "spawn": [
-                        "position": ["row": move.spawn.position.row, "column": move.spawn.position.column],
-                        "value": move.spawn.value,
-                    ],
-                ],
-            ]
-        }
-        // The last three entries are the session's own history.
-        #expect(try Self.decodeEdited(states[4]) { $0["undo"] = Array(entries[1...]) } == states[4])
+        let states = playedGame(moves: 4).states
+        let firstEntry = try Self.jsonObject(states[1])["undo"] as! [Any]
+        let lastEntries = try Self.jsonObject(states[4])["undo"] as! [Any]
         #expect(throws: DecodingError.self) {
-            try Self.decodeEdited(states[4]) { $0["undo"] = entries }
+            try Self.decodeEdited(states[4]) { $0["undo"] = firstEntry + lastEntries }
+        }
+    }
+
+    /// Three moves to redo and the move before them to undo follow each
+    /// other, but are one more than the limit.
+    @Test func decodingRejectsUndoAndRedoBeyondTheLimit() throws {
+        let states = playedGame(moves: 4).states
+        var session = states[4]
+        for _ in 0..<3 { session.undo() }
+        #expect(session.board == states[1].board && session.redoCount == 3)
+        let entry = try Self.jsonObject(states[1])["undo"] as! [Any]
+        #expect(throws: DecodingError.self) {
+            try Self.decodeEdited(session) { $0["undo"] = entry }
         }
     }
 
     @Test func decodingRejectsAHighScoreBelowAScoreToRedo() throws {
-        var session = UndoRedoTests.play(40)[40]
+        var session = playedGame(moves: 40).states[40]
         for _ in 0..<3 { session.undo() }
+        #expect(try Self.decodeEdited(session) { _ in } == session)
         #expect(throws: DecodingError.self) {
             try Self.decodeEdited(session) { $0["highScore"] = session.score }
         }

@@ -63,22 +63,25 @@ model holds one and calls its methods:
 
 - `move(_:)` plays a swipe and returns the `Move` to animate, or `nil` for a
   swipe that changes nothing (which is ignored entirely).
-- `undo()` takes back one of the last three moves; `redo()` replays an undone
-  move with the same spawned tile. A new swipe after undo draws a new tile and
-  drops the moves that could have been redone.
+- `undo()` takes back the last move; `redo()` replays an undone move with the
+  same spawned tile and returns it to animate. The session remembers three
+  moves, counting those that can be undone and those that can be redone
+  together. A new swipe after undo draws a new tile and drops the moves that
+  could have been redone.
 - `shouldPresentWin` turns `true` once per game, when a winning tile is first
-  reached; `acknowledgeWin()` dismisses it (so does the next move, undo or
-  redo). Undo doesn't take the win back. `isGameOver` is `true` when no swipe
-  changes the board; undo still works then.
+  reached, and stays `true` until `acknowledgeWin()`. Undo doesn't take the
+  win back. `isGameOver` is `true` when no swipe changes the board; undo still
+  works then.
 - `restart()` starts a new game, clearing undo and redo.
 - `highScore` is the best score reached in the variant, raised by the session
   itself and never lowered, not even by undo or restart.
 
 `GameStore` saves one game per variant and the high scores in a `GameStorage`:
 `FileGameStorage` (JSON files in a directory the app chooses, written
-atomically) or `InMemoryGameStorage` (tests, previews, UI tests). The format is
-versioned; a saved game that can't be restored loads as a new game that keeps
-the high score.
+atomically) or `InMemoryGameStorage` (tests, previews, UI tests). The formats
+are versioned; a saved game that can't be restored loads as a new game that
+keeps the high score. Storage errors are thrown rather than treated as a missing
+game, so the app can avoid saving over a game it couldn't read.
 
 ## Local development
 

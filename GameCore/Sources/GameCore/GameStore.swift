@@ -4,12 +4,15 @@ import Foundation
 ///
 /// Each variant has its own saved game, so switching variants doesn't lose a
 /// game, and high scores are kept apart from games, so they survive a new
-/// game or a saved game that can't be read.
+/// game or a saved game that can't be restored.
 ///
 ///     let store = GameStore(storage: FileGameStorage(directory: savesURL))
-///     var session = store.loadSession(for: .classic, newGameSeed: .random(in: .min ... .max))
+///     var session = try store.loadSession(for: .classic, newGameSeed: .random(in: .min ... .max))
 ///     session.move(.left)
 ///     try store.save(session)
+///
+/// Use a store from one place at a time, such as the main actor: saving
+/// reads, updates and writes back the high scores.
 ///
 /// ## Format
 ///
@@ -20,19 +23,27 @@ import Foundation
 ///   `<session>` is the ``GameSession`` encoding, including its rules.
 /// - `high-scores`: `{"version": 1, "scores": {"<rules id>": <score>, ...}}`.
 ///
-/// Data that can't be read, is inconsistent or has another version is
-/// ignored: loading starts a new game instead, and a new save replaces it.
+/// Each has its own version. A saved game that can't be decoded, isn't a
+/// consistent game, was saved with other rules or has another version is
+/// ignored: loading starts a new game, and the next save replaces it. High
+/// scores that can't be decoded are replaced on the next save too, but high
+/// scores of a later version (after a downgrade of the app) are kept and not
+/// updated; each saved game still carries its variant's high score.
 ///
 /// ## Changing the format
 ///
-/// Keep the meaning of an existing version unchanged. When the format must
-/// change, raise ``formatVersion``, keep a frozen copy of the types that
-/// decode the old version, and convert old data when loading, so that saves
-/// from earlier app versions still load. Saves from a later version than the
-/// app knows (after a downgrade) are ignored.
+/// Keep the meaning of an existing version unchanged; the pinned fixtures in
+/// the tests guard it. When a format must change, raise its version, keep a
+/// frozen copy of the types that decode the old version, and convert old data
+/// when loading, so that saves from earlier app versions still load.
 public struct GameStore: Sendable {
-    /// The version of the format this store writes.
-    public static let formatVersion = 1
+    /// The version of the saved game format this store reads and writes.
+    static let gameVersion = 1
+    /// The version of the high scores format this store reads and writes.
+    static let highScoresVersion = 1
+    /// Legitimate data is a few kilobytes; anything much larger is rejected
+    /// without decoding it.
+    static let maxDataSize = 1 << 20
 
     private let storage: any GameStorage
 
@@ -49,11 +60,15 @@ public struct GameStore: Sendable {
     /// and the stored high score.
     ///
     /// - Parameter newGameSeed: Seeds the new game, if one is needed.
-    public func loadSession(for rules: GameRules, newGameSeed: UInt64) -> GameSession {
-        let highScore = highScore(for: rules)
-        guard var session = try? savedSession(for: rules) else {
-            return GameSession(rules: rules, seed: newGameSeed, highScore: highScore)
-        }
+    /// - Throws: If the storage fails to read, which may be temporary: the app
+    ///   shouldn't save over the game it couldn't read.
+    public func loadSession(for rules: GameRules, newGameSeed: UInt64) throws -> GameSession {
+        let highScore = try highScore(for: rules)
+        guard let data = try storage.data(forKey: Self.gameKey(for: rules)),
+            case .current(let saved) = Self.decode(SavedGame.self, from: data, version: Self.gameVersion),
+            saved.session.rules == rules
+        else { return GameSession(rules: rules, seed: newGameSeed, highScore: highScore) }
+        var session = saved.session
         session.raiseHighScore(to: highScore)
         return session
     }
@@ -62,54 +77,47 @@ public struct GameStore: Sendable {
     /// saved before, and raises the variant's stored high score to the
     /// session's.
     ///
-    /// Call it after every change the player shouldn't lose, such as each
-    /// move, undo, redo and restart, or at least when the app moves to the
-    /// background.
+    /// Call it after every change the player shouldn't lose: each move, undo,
+    /// redo, restart and ``GameSession/acknowledgeWin()``, or at least when
+    /// the app moves to the background.
     ///
     /// - Throws: If the storage fails. The game is saved first, so if only the
     ///   high score fails to save, it is recovered from the game on the next
     ///   load.
     public func save(_ session: GameSession) throws {
         try storage.setData(
-            Self.encode(SavedGame(version: Self.formatVersion, session: session)),
+            Self.encode(SavedGame(version: Self.gameVersion, session: session)),
             forKey: Self.gameKey(for: session.rules))
-        var scores = loadHighScores()
-        if session.highScore > scores[session.rules.id, default: 0] {
-            scores[session.rules.id] = session.highScore
-            try storage.setData(
-                Self.encode(SavedHighScores(version: Self.formatVersion, scores: scores)), forKey: Self.highScoresKey)
+
+        var scores: [String: Int] = [:]
+        if let data = try storage.data(forKey: Self.highScoresKey) {
+            switch Self.decode(SavedHighScores.self, from: data, version: Self.highScoresVersion) {
+            case .current(let saved): scores = saved.scores
+            case .later: return
+            case .unusable: break
+            }
         }
+        guard session.highScore > scores[session.rules.id, default: 0] else { return }
+        scores[session.rules.id] = session.highScore
+        try storage.setData(
+            Self.encode(SavedHighScores(version: Self.highScoresVersion, scores: scores)), forKey: Self.highScoresKey)
     }
 
     /// The stored high score of the variant `rules` describe, or 0 if there
-    /// is none or the high scores can't be read.
-    public func highScore(for rules: GameRules) -> Int {
-        max(0, loadHighScores()[rules.id, default: 0])
-    }
-
-    static let highScoresKey = "high-scores"
-
-    static func gameKey(for rules: GameRules) -> String {
-        "game-" + rules.id
-    }
-
-    /// The saved game of the variant, or `nil` if there is none.
+    /// is none or the high scores can't be decoded.
     ///
-    /// - Throws: If the data can't be read, has an unknown version or doesn't
-    ///   decode to a consistent game with these rules.
-    func savedSession(for rules: GameRules) throws -> GameSession? {
-        guard let data = try storage.data(forKey: Self.gameKey(for: rules)) else { return nil }
-        let session = try Self.decode(SavedGame.self, from: data).session
-        guard session.rules == rules else { throw GameStoreError.rulesChanged }
-        return session
+    /// - Throws: If the storage fails to read.
+    public func highScore(for rules: GameRules) throws -> Int {
+        guard let data = try storage.data(forKey: Self.highScoresKey),
+            case .current(let saved) = Self.decode(SavedHighScores.self, from: data, version: Self.highScoresVersion)
+        else { return 0 }
+        return max(0, saved.scores[rules.id, default: 0])
     }
 
-    /// The stored high scores by rules id, empty if they can't be read.
-    private func loadHighScores() -> [String: Int] {
-        guard let data = try? storage.data(forKey: Self.highScoresKey),
-            let saved = try? Self.decode(SavedHighScores.self, from: data)
-        else { return [:] }
-        return saved.scores
+    private static let highScoresKey = "high-scores"
+
+    private static func gameKey(for rules: GameRules) -> String {
+        "game-" + rules.id
     }
 
     private static func encode(_ value: some Encodable) throws -> Data {
@@ -118,22 +126,33 @@ public struct GameStore: Sendable {
         return try encoder.encode(value)
     }
 
-    /// Decodes `data` after checking that it has the current version.
-    private static func decode<Value: Decodable>(_ type: Value.Type, from data: Data) throws -> Value {
+    /// Decodes `data` if it has the given version.
+    private static func decode<Value: Decodable>(
+        _ type: Value.Type, from data: Data, version: Int
+    ) -> Decoded<Value> {
         let decoder = JSONDecoder()
-        let version = try decoder.decode(VersionHeader.self, from: data).version
-        guard version == formatVersion else { throw GameStoreError.unsupportedVersion(version) }
-        return try decoder.decode(type, from: data)
+        guard data.count <= maxDataSize, let header = try? decoder.decode(VersionHeader.self, from: data) else {
+            return .unusable
+        }
+        if header.version > version {
+            return .later
+        }
+        guard header.version == version, let value = try? decoder.decode(type, from: data) else { return .unusable }
+        return .current(value)
     }
 }
 
-/// Why saved data wasn't restored.
-enum GameStoreError: Error {
-    case unsupportedVersion(Int)
-    case rulesChanged
+/// The outcome of decoding saved data.
+private enum Decoded<Value> {
+    /// The data has the current version and decodes to `Value`.
+    case current(Value)
+    /// The data has a later version than this app knows.
+    case later
+    /// The data doesn't decode.
+    case unusable
 }
 
-/// The part of every saved value that says how to decode the rest.
+/// The part of all saved data that says how to decode the rest.
 private struct VersionHeader: Decodable {
     let version: Int
 }

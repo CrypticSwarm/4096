@@ -135,6 +135,18 @@ struct GameSessionTests {
         #expect(!session.isGameOver)
     }
 
+    /// Restart draws from the session's generator, so each new game starts
+    /// differently.
+    @Test func restartsDrawNewStartingTiles() {
+        var session = GameSession(rules: .classic, seed: 8)
+        var starts = [session.board]
+        for _ in 0..<5 {
+            session.restart()
+            starts.append(session.board)
+        }
+        #expect(Set(starts).count == starts.count)
+    }
+
     @Test func restartIsReproducible() {
         var first = GameSession(rules: .classic, seed: 8)
         var second = first
@@ -151,14 +163,5 @@ struct GameSessionTests {
         session.move(.left)
         #expect(session.score == .max)
         #expect(session.highScore == .max)
-    }
-}
-
-/// Swipes in turn until the score is positive.
-func playUntilScored(_ session: inout GameSession) {
-    var index = 0
-    while session.score == 0 {
-        session.move(Direction.allCases[index % 4])
-        index += 1
     }
 }

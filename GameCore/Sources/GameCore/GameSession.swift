@@ -20,27 +20,30 @@
 /// ## Winning
 ///
 /// The first time the board has a tile of at least the rules' winning value,
-/// ``shouldPresentWin`` turns `true` so the UI can congratulate the player,
-/// until ``acknowledgeWin()`` (the player chose to keep playing) or the next
-/// move, undo or redo. That happens once per game: ``hasWon`` stays `true`
-/// even if the winning move is undone, so reaching the tile again doesn't
-/// present the win again. Only ``restart()`` starts over. Play goes on after
-/// a win until no move is possible (``isGameOver``); a move can win and end
-/// the game at once.
+/// ``hasWon`` and ``shouldPresentWin`` turn `true`. ``shouldPresentWin``
+/// stays `true`, whatever else happens, until the UI has congratulated the
+/// player and calls ``acknowledgeWin()`` (the player chose to keep playing),
+/// so a quick swipe can't skip the win. It happens once per game: undoing the
+/// winning move doesn't take the win back, and reaching the tile again, by a
+/// new move or by redo, doesn't present it again. Only ``restart()`` starts
+/// over. Play goes on after a win until no move is possible
+/// (``isGameOver``); a move can win and end the game at once.
 ///
 /// ## High score
 ///
 /// ``highScore`` is the best score reached in the session's variant, including
-/// earlier games: pass the stored best to the initializer and the session
-/// raises it whenever the score beats it. Nothing lowers it, and ``restart()``
-/// keeps it, so code that shows the session never updates the high score
-/// itself.
+/// earlier games. The session raises it whenever the score beats it; nothing
+/// lowers it, and ``restart()`` keeps it, so code that shows the session never
+/// updates the high score itself. Get the sessions the player sees from
+/// ``GameStore/loadSession(for:newGameSeed:)``, which starts from the stored
+/// high score, and start new games with ``restart()``.
 ///
 /// ## Saving
 ///
 /// A session is `Codable` and decodes to an equal session that continues
 /// exactly as the original would have, including undo, redo and the tiles
-/// still to be drawn. ``GameStore`` saves sessions in a versioned format.
+/// still to be drawn. Save it with ``GameStore``, whose format is versioned,
+/// rather than encoding it directly.
 public struct GameSession: Hashable, Sendable {
     /// The variant being played.
     public let rules: GameRules
@@ -54,7 +57,7 @@ public struct GameSession: Hashable, Sendable {
 
     /// The most recent moves that can be undone, oldest first.
     private var undoHistory: [HistoryEntry] = []
-    /// The moves that can be redone, the next one last.
+    /// The moves that can be redone, in the order they would be replayed.
     private var redoMoves: [MoveRecord] = []
     /// Whether the game has been won and whether that still needs presenting.
     private var win: WinState
@@ -64,6 +67,10 @@ public struct GameSession: Hashable, Sendable {
 
     /// Starts a new game: the board gets the rules' starting tiles, drawn from
     /// a generator seeded with `seed`.
+    ///
+    /// For the game the player sees, use
+    /// ``GameStore/loadSession(for:newGameSeed:)`` instead, so the high score
+    /// isn't lost.
     ///
     /// - Parameters:
     ///   - rules: The variant to play.
@@ -83,6 +90,9 @@ public struct GameSession: Hashable, Sendable {
 
     /// Starts a game on a given board, for example to set up a test or a
     /// preview close to a win or to game over.
+    ///
+    /// If `board` already has a winning tile, the game counts as just won:
+    /// ``shouldPresentWin`` is `true` until ``acknowledgeWin()``.
     ///
     /// - Parameters:
     ///   - rules: The variant to play.
@@ -128,13 +138,14 @@ public struct GameSession: Hashable, Sendable {
     }
 
     /// Whether a tile of at least the rules' winning value has been reached in
-    /// this game. Undo doesn't reset it.
+    /// this game. Undo doesn't reset it; ``restart()`` does.
     public var hasWon: Bool {
         win != .notWon
     }
 
-    /// Whether the UI should now tell the player they won and offer to keep
-    /// playing: the game was just won and the player hasn't moved on yet.
+    /// Whether the UI should tell the player they won and offer to keep
+    /// playing: the game was won and ``acknowledgeWin()`` hasn't been called
+    /// since. Moves, undo and redo don't change it.
     public var shouldPresentWin: Bool {
         win == .pending
     }
@@ -164,9 +175,6 @@ public struct GameSession: Hashable, Sendable {
     public mutating func move(_ direction: Direction) -> Move? {
         guard let move = rules.move(direction, on: board, using: &generator) else { return nil }
         redoMoves.removeAll()
-        if undoHistory.count == Self.undoLimit {
-            undoHistory.removeFirst()
-        }
         apply(move)
         return move
     }
@@ -174,19 +182,15 @@ public struct GameSession: Hashable, Sendable {
     /// Takes back the most recent move, restoring the board and score from
     /// before it. The move can then be redone.
     ///
-    /// - Returns: The move that was taken back, for animating it in reverse,
-    ///   or `nil` if there is nothing to undo.
+    /// - Returns: Whether a move was undone: `false` if there was nothing to
+    ///   undo.
     @discardableResult
-    public mutating func undo() -> Move? {
-        guard let entry = undoHistory.popLast() else { return nil }
-        guard let move = entry.move.replayed(on: entry.before.board) else {
-            preconditionFailure("A recorded move doesn't replay on the board it was played on")
-        }
-        redoMoves.append(entry.move)
+    public mutating func undo() -> Bool {
+        guard let entry = undoHistory.popLast() else { return false }
+        redoMoves.insert(entry.move, at: 0)
         board = entry.before.board
         score = entry.before.score
-        acknowledgeWin()
-        return move
+        return true
     }
 
     /// Plays the most recently undone move again, with the same spawned tile.
@@ -195,7 +199,8 @@ public struct GameSession: Hashable, Sendable {
     ///   `nil` if there is nothing to redo.
     @discardableResult
     public mutating func redo() -> Move? {
-        guard let record = redoMoves.popLast() else { return nil }
+        guard !redoMoves.isEmpty else { return nil }
+        let record = redoMoves.removeFirst()
         guard let move = record.replayed(on: board) else {
             preconditionFailure("An undone move doesn't replay on the board it was undone to")
         }
@@ -221,26 +226,20 @@ public struct GameSession: Hashable, Sendable {
     }
 
     /// Makes `move`, which was played on the current board, the current state
-    /// and remembers it for undo.
-    ///
-    /// The caller makes room in the history: at most ``undoLimit`` moves can
-    /// be undone or redone in total, so redoing always fits.
+    /// and remembers it for undo, forgetting the oldest move beyond the limit.
     private mutating func apply(_ move: Move) {
-        undoHistory.append(HistoryEntry(before: Snapshot(board: board, score: score), move: MoveRecord(move)))
-        board = move.board
-        score = Self.adding(move.scoreDelta, to: score)
-        highScore = max(highScore, score)
-        acknowledgeWin()
+        let before = Snapshot(board: board, score: score)
+        if undoHistory.count == Self.undoLimit {
+            undoHistory.removeFirst()
+        }
+        undoHistory.append(HistoryEntry(before: before, move: MoveRecord(direction: move.direction, spawn: move.spawn)))
+        let after = before.advanced(by: move)
+        board = after.board
+        score = after.score
+        raiseHighScore(to: score)
         if win == .notWon, rules.isWinning(board) {
             win = .pending
         }
-    }
-
-    /// Adds points to a score, stopping at `Int.max` rather than trapping, so
-    /// a tampered saved score can't crash the game.
-    static func adding(_ points: Int, to score: Int) -> Int {
-        let (sum, overflow) = score.addingReportingOverflow(points)
-        return overflow ? .max : sum
     }
 }
 
@@ -254,15 +253,6 @@ struct Snapshot: Hashable, Sendable {
 struct MoveRecord: Hashable, Sendable {
     var direction: Direction
     var spawn: Spawn
-
-    init(direction: Direction, spawn: Spawn) {
-        self.direction = direction
-        self.spawn = spawn
-    }
-
-    init(_ move: Move) {
-        self.init(direction: move.direction, spawn: move.spawn)
-    }
 
     /// The move, replayed on `board`, or `nil` if it doesn't fit `board`.
     func replayed(on board: Board) -> Move? {
@@ -280,7 +270,7 @@ struct HistoryEntry: Hashable, Sendable {
 enum WinState: String, Hashable, Sendable {
     /// No winning tile has been reached in this game.
     case notWon
-    /// A winning tile was just reached and the win hasn't been presented yet.
+    /// A winning tile was reached and the win hasn't been acknowledged yet.
     case pending
     /// The game was won and the player keeps playing.
     case acknowledged
@@ -304,6 +294,9 @@ extension GameSession: Codable {
     /// boards must fit the rules, and every recorded move must replay on the
     /// board it was played on and lead to the next state, so undo and redo
     /// can't fail later.
+    ///
+    /// This encoding, including that of the rules, boards and other values it
+    /// contains, is version 1 of the saved game format (see ``GameStore``).
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         rules = try container.decode(GameRules.self, forKey: .rules)
@@ -312,7 +305,7 @@ extension GameSession: Codable {
         highScore = try container.decode(Int.self, forKey: .highScore)
         win = try container.decode(WinState.self, forKey: .win)
         undoHistory = try container.decode([HistoryEntry].self, forKey: .undo)
-        redoMoves = try container.decode([MoveRecord].self, forKey: .redo).reversed()
+        redoMoves = try container.decode([MoveRecord].self, forKey: .redo)
         generator = try container.decode(SplitMix64.self, forKey: .generator)
         if let problem {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: problem))
@@ -331,7 +324,7 @@ extension GameSession: Codable {
         try container.encode(highScore, forKey: .highScore)
         try container.encode(win, forKey: .win)
         try container.encode(undoHistory, forKey: .undo)
-        try container.encode(Array(redoMoves.reversed()), forKey: .redo)
+        try container.encode(redoMoves, forKey: .redo)
         try container.encode(generator, forKey: .generator)
     }
 
@@ -339,6 +332,7 @@ extension GameSession: Codable {
     private var problem: String? {
         let current = Snapshot(board: board, score: score)
         guard current.fits(rules) else { return "The board or score doesn't fit the rules" }
+        guard board.tileCount > 0 else { return "The board is empty" }
         guard undoHistory.count + redoMoves.count <= Self.undoLimit else { return "The history is too long" }
         if win == .notWon && rules.isWinning(board) {
             return "The board has a winning tile but the game isn't won"
@@ -346,14 +340,14 @@ extension GameSession: Codable {
         var next: Snapshot?
         for entry in undoHistory {
             guard entry.before.fits(rules), next == nil || next == entry.before,
-                let after = entry.before.playing(entry.move)
+                let after = entry.before.replaying(entry.move)
             else { return "The undo history isn't a line of play leading to the board" }
             next = after
         }
         guard next == nil || next == current else { return "The undo history doesn't lead to the board" }
         var state = current
-        for record in redoMoves.reversed() {
-            guard let after = state.playing(record) else { return "A move to redo doesn't fit its board" }
+        for record in redoMoves {
+            guard let after = state.replaying(record) else { return "A move to redo doesn't fit its board" }
             state = after
         }
         guard highScore >= state.score else { return "The high score is below a score that was reached" }
@@ -369,10 +363,16 @@ extension Snapshot {
 
     /// The state after replaying `record` on this one, or `nil` if it doesn't
     /// fit the board.
-    func playing(_ record: MoveRecord) -> Snapshot? {
-        record.replayed(on: board).map {
-            Snapshot(board: $0.board, score: GameSession.adding($0.scoreDelta, to: score))
-        }
+    func replaying(_ record: MoveRecord) -> Snapshot? {
+        record.replayed(on: board).map(advanced(by:))
+    }
+
+    /// The state after `move`, which was played on this state's board. The
+    /// score stops at `Int.max` rather than trapping, so a tampered saved
+    /// score can't crash the game.
+    func advanced(by move: Move) -> Snapshot {
+        let (sum, overflow) = score.addingReportingOverflow(move.scoreDelta)
+        return Snapshot(board: move.board, score: overflow ? .max : sum)
     }
 }
 

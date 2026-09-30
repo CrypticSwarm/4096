@@ -1,3 +1,4 @@
+import Foundation
 import GameCore
 import Testing
 
@@ -9,7 +10,8 @@ import Testing
 /// the cursor.
 ///
 /// Winning is modeled from the largest tile ever reached in the game: the win
-/// is presented right after the action that first reached a winning tile.
+/// is pending from the action that first reached a winning tile until it is
+/// acknowledged.
 struct ReferenceSession {
     let rules: GameRules
     var generator: SplitMix64
@@ -25,9 +27,9 @@ struct ReferenceSession {
     var bestScore: Int
     /// The largest tile reached in this game, in any state.
     var largestTile: Int
-    /// Whether the last action first reached a winning tile, and the win
-    /// hasn't been acknowledged since.
-    var winJustReached: Bool
+    /// Whether a winning tile was reached and the win hasn't been acknowledged
+    /// since.
+    var winPending: Bool
 
     init(rules: GameRules, seed: UInt64, highScore: Int = 0) {
         self.rules = rules
@@ -35,7 +37,7 @@ struct ReferenceSession {
         states = [(rules.startingBoard(using: &generator), 0)]
         bestScore = highScore
         largestTile = states[0].board.highestTileValue ?? 0
-        winJustReached = largestTile >= rules.winningValue
+        winPending = largestTile >= rules.winningValue
     }
 
     var board: Board { states[cursor].board }
@@ -48,7 +50,9 @@ struct ReferenceSession {
     mutating func reached(_ board: Board, score: Int) {
         let wasWon = hasWon
         largestTile = max(largestTile, board.highestTileValue ?? 0)
-        winJustReached = hasWon && !wasWon
+        if hasWon && !wasWon {
+            winPending = true
+        }
         bestScore = max(bestScore, score)
     }
 
@@ -65,11 +69,10 @@ struct ReferenceSession {
         return move
     }
 
-    mutating func undo() -> Move? {
-        guard cursor > floor else { return nil }
+    mutating func undo() -> Bool {
+        guard cursor > floor else { return false }
         cursor -= 1
-        reached(board, score: score)
-        return moves[cursor]
+        return true
     }
 
     mutating func redo() -> Move? {
@@ -85,6 +88,7 @@ struct ReferenceSession {
         cursor = 0
         floor = 0
         largestTile = 0
+        winPending = false
         reached(board, score: 0)
     }
 }
@@ -96,15 +100,16 @@ struct GameSessionPropertyTests {
 
     static let rules = [
         GameRules.classic,
-        GameRules(id: "2x2", boardSize: 2, winningValue: 16),
-        GameRules(id: "3x3", boardSize: 3, winningValue: 64),
+        GameRules(id: "2x2-to16", boardSize: 2, winningValue: 16),
+        GameRules(id: "3x3-to64", boardSize: 3, winningValue: 64),
         GameRules(id: "5x5", boardSize: 5, startingTileCount: 3),
     ]
 
-    /// Random sequences of moves, undos, redos and restarts, compared with the
-    /// reference model after every step.
+    /// Random sequences of moves, undos, redos, acknowledged wins and
+    /// restarts, compared with the reference model after every step. Every
+    /// state also survives encoding.
     @Test(arguments: rules)
-    func matchesTheReferenceModel(rules: GameRules) {
+    func matchesTheReferenceModel(rules: GameRules) throws {
         for seed in 0..<25 as Range<UInt64> {
             var session = GameSession(rules: rules, seed: seed, highScore: 5)
             var model = ReferenceSession(rules: rules, seed: seed, highScore: 5)
@@ -122,7 +127,7 @@ struct GameSessionPropertyTests {
                     #expect(session.redo() == model.redo(), "step \(step)")
                 case .acknowledgeWin:
                     session.acknowledgeWin()
-                    model.winJustReached = false
+                    model.winPending = false
                 case .restart:
                     session.restart()
                     model.restart()
@@ -136,17 +141,18 @@ struct GameSessionPropertyTests {
                 #expect(session.canUndo == (model.undoCount > 0))
                 #expect(session.canRedo == (model.redoCount > 0))
                 #expect(session.undoCount + session.redoCount <= GameSession.undoLimit)
-                #expect(session.isGameOver == !model.board.hasAvailableMoves)
+                #expect(session.isGameOver == Direction.allCases.allSatisfy { model.board.sliding($0).isNoOp })
                 #expect(session.hasWon == model.hasWon)
-                #expect(session.shouldPresentWin == model.winJustReached)
+                #expect(session.shouldPresentWin == model.winPending)
+                #expect(try JSONDecoder().decode(GameSession.self, from: JSONEncoder().encode(session)) == session)
 
-                if session.canUndo && !session.shouldPresentWin {
+                if session.canUndo {
                     var copy = session
                     copy.undo()
                     copy.redo()
                     #expect(copy == session, "undo then redo is the identity")
                 }
-                if session.canRedo && !session.shouldPresentWin {
+                if session.canRedo {
                     var copy = session
                     copy.redo()
                     copy.undo()
@@ -161,9 +167,9 @@ struct GameSessionPropertyTests {
     static func randomAction(using generator: inout SplitMix64) -> Action {
         switch Int.random(in: 0..<100, using: &generator) {
         case 0..<55: .move
-        case 55..<76: .undo
-        case 76..<94: .redo
-        case 94..<98: .acknowledgeWin
+        case 55..<74: .undo
+        case 74..<90: .redo
+        case 90..<98: .acknowledgeWin
         default: .restart
         }
     }

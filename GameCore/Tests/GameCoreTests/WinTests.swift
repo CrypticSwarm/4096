@@ -86,22 +86,24 @@ struct WinTests {
         #expect(session.hasWon)
     }
 
-    @Test func undoBeforeAcknowledgingDismissesTheWin() throws {
+    /// Until acknowledged, the win stays pending whatever the player does, so
+    /// a quick swipe or undo can't skip it; it is still presented only once.
+    @Test func winStaysPendingUntilAcknowledged() throws {
         var session = try Self.session(Self.oneMergeFromEight)
         session.move(.left)
 
-        session.undo()
-
-        #expect(!session.shouldPresentWin)
-        #expect(session.hasWon)
-        session.redo()
-        #expect(!session.shouldPresentWin)
-    }
-
-    @Test func nextMoveDismissesTheWin() throws {
-        var session = try Self.session(Self.oneMergeFromEight)
-        session.move(.left)
         #expect(session.move(.right) != nil)
+        #expect(session.shouldPresentWin)
+        session.undo()
+        session.undo()
+        #expect(session.board.highestTileValue == 4)
+        #expect(session.shouldPresentWin)
+        session.redo()
+        #expect(session.shouldPresentWin)
+
+        session.acknowledgeWin()
+        session.undo()
+        session.redo()
         #expect(!session.shouldPresentWin)
         #expect(session.hasWon)
     }

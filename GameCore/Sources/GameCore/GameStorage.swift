@@ -26,7 +26,9 @@ public protocol GameStorage: Sendable {
 /// percent-encoded byte by byte (`"Classic/2"` is saved as
 /// `%43lassic%2F2.json`). So any key maps to a single file inside the
 /// directory, and distinct keys map to distinct names even on file systems
-/// that ignore case.
+/// that ignore case. File names are limited to 255 bytes on common file
+/// systems and escaping can triple a key's length, so keep keys (and
+/// therefore rules ids) short: 80 ASCII characters always fit.
 public struct FileGameStorage: GameStorage {
     /// The directory holding the files. It is created on the first save.
     public let directory: URL
@@ -37,15 +39,15 @@ public struct FileGameStorage: GameStorage {
         self.directory = directory
     }
 
+    /// Returns the contents of the key's file, or `nil` if there is no such
+    /// file.
+    ///
+    /// - Throws: If the file exists but can't be read.
     public func data(forKey key: String) throws -> Data? {
-        let url = fileURL(forKey: key)
         do {
-            return try Data(contentsOf: url)
-        } catch {
-            if !FileManager.default.fileExists(atPath: url.path) {
-                return nil
-            }
-            throw error
+            return try Data(contentsOf: fileURL(forKey: key))
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return nil
         }
     }
 
@@ -55,12 +57,11 @@ public struct FileGameStorage: GameStorage {
         try data.write(to: fileURL(forKey: key), options: .atomic)
     }
 
-    /// The URL of the file that holds `key`'s data.
-    func fileURL(forKey key: String) -> URL {
+    private func fileURL(forKey key: String) -> URL {
         directory.appendingPathComponent(Self.fileName(forKey: key), isDirectory: false)
     }
 
-    static func fileName(forKey key: String) -> String {
+    private static func fileName(forKey key: String) -> String {
         var name = ""
         for byte in key.utf8 {
             switch byte {
@@ -76,7 +77,7 @@ public struct FileGameStorage: GameStorage {
 }
 
 /// Keeps data in memory, for tests, previews and UI tests that must not
-/// touch saved games. Copies share their contents.
+/// touch saved games. All references to one instance share its contents.
 public final class InMemoryGameStorage: GameStorage, @unchecked Sendable {
     // @unchecked: every access to `contents` holds `lock`.
     private let lock = NSLock()
@@ -87,12 +88,14 @@ public final class InMemoryGameStorage: GameStorage, @unchecked Sendable {
         self.contents = contents
     }
 
+    /// Returns the data saved under `key`, or `nil` if there is none.
     public func data(forKey key: String) -> Data? {
         lock.lock()
         defer { lock.unlock() }
         return contents[key]
     }
 
+    /// Saves `data` under `key`, replacing any data saved there before.
     public func setData(_ data: Data, forKey key: String) {
         lock.lock()
         defer { lock.unlock() }
