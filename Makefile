@@ -11,6 +11,11 @@ SHELL := /bin/bash
 
 PACKAGE := GameCore
 
+# Every Swift file in the repo, skipping hidden dirs (.build, .git, .swiftpm)
+# and build output.
+SWIFT_FILES = $(shell find . -mindepth 1 \( -name '.*' -o -name build -o -name DerivedData \) -prune \
+	-o -name '*.swift' -print)
+
 PROJECT := Game4096.xcodeproj
 SCHEME := Game4096
 # The device must exist in the selected Xcode's simulator runtimes; CI's Xcode
@@ -34,12 +39,11 @@ build: ## Build the GameCore package
 test: ## Run the GameCore tests
 	swift test --package-path $(PACKAGE)
 
-# swift format skips hidden directories such as .build when recursing.
 lint: ## Check formatting of all Swift sources (strict)
-	swift format lint --strict --parallel --recursive .
+	swift format lint --strict --parallel $(SWIFT_FILES)
 
 format: ## Reformat all Swift sources in place
-	swift format format --in-place --parallel --recursive .
+	swift format format --in-place --parallel $(SWIFT_FILES)
 
 # The Core CI job runs these as separate steps (so lint reports even when tests
 # fail); keep the two in sync.

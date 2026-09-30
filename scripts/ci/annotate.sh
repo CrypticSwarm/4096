@@ -28,7 +28,7 @@ status=${PIPESTATUS[0]}
 
 # Strip ANSI colors and terminal hyperlinks (swiftc wraps diagnostic group names).
 esc=$'\033'
-sed -e "s/${esc}\\[[0-9;]*m//g" -e "s/${esc}\\]8;;[^${esc}]*${esc}\\\\//g" "$raw" >"$log"
+LC_ALL=C sed -e "s/${esc}[[][0-9;]*m//g" -e "s/${esc}[]]8;;[^${esc}]*${esc}[\\]//g" "$raw" >"$log"
 
 # Extract "severity|file|line|col|message" separated by the ASCII unit
 # separator (not a whitespace IFS, so an empty col survives `read`):
@@ -36,7 +36,7 @@ sed -e "s/${esc}\\[[0-9;]*m//g" -e "s/${esc}\\]8;;[^${esc}]*${esc}\\\\//g" "$raw
 #   /abs/File.swift:12: error: Suite.test : XCTAssert… (XCTest on Linux)
 #   ✘ Test foo() recorded an issue at File.swift:7:9: Expectation failed: ...
 sep=$'\037'
-diagnostics=$(sed -nE \
+diagnostics=$(LC_ALL=C sed -nE \
     -e "s/^([^ :]+\\.swift):([0-9]+):(([0-9]+):)? (error|warning): (.*)$/\\5${sep}\\1${sep}\\2${sep}\\4${sep}\\6/p" \
     -e "s/^.* recorded an issue.* at ([^ :]+\\.swift):([0-9]+):([0-9]+): (.*)$/error${sep}\\1${sep}\\2${sep}\\3${sep}\\4/p" \
     "$log" | sort -u)

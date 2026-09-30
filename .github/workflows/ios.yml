@@ -36,14 +36,22 @@ jobs:
 
       - name: Select Xcode
         run: |
-          sudo xcode-select --switch "/Applications/Xcode_${XCODE_VERSION}.app"
+          xcode="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [[ ! -d "$xcode" ]]; then
+            echo "::error title=Select Xcode::Xcode ${XCODE_VERSION} is not installed on this runner image"
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode"
           xcodebuild -version
 
       - name: Install XcodeGen
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/xcodegen.zip" \
             "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
-          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c - || {
+            echo "::error title=Install XcodeGen::Checksum mismatch for XcodeGen ${XCODEGEN_VERSION}"
+            exit 1
+          }
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 

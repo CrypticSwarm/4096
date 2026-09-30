@@ -69,7 +69,8 @@ tests) and `test-results` (the `.xcresult` bundle and raw `xcodebuild` log).
 Where versions are pinned:
 
 - Swift: the `container` image in `core.yml`.
-- Xcode and XcodeGen: `XCODE_VERSION` and `XCODEGEN_VERSION` (plus checksum) in `ios.yml`.
+- Xcode and XcodeGen: `XCODE_VERSION` and `XCODEGEN_VERSION` (plus checksum) in `ios.yml`;
+  `options.xcodeVersion` in `project.yml` tracks the Xcode major version.
 - macOS runner image: `runs-on` in `ios.yml`.
 - Simulator: `IOS_DESTINATION` in the `Makefile`.
 - iOS deployment target: `project.yml` and `GameCore/Package.swift`.

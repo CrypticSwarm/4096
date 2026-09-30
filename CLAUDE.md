@@ -22,7 +22,8 @@ Run `make format` then `make check` before every commit.
 
 ## Layout
 
-- `GameCore/`: Swift package where all game logic lives (engine, session, persistence).
+- `GameCore/`: Swift package for all game logic (engine, session and persistence
+  go here as they are added; today it has only a placeholder).
 - `Game4096/`: SwiftUI app. `Game4096Tests/`: app unit tests. `Game4096UITests/`: XCUITests.
 - `Shared/`: compiled into both the app and the UI tests (accessibility identifiers,
   later launch-argument keys).
@@ -35,9 +36,9 @@ Run `make format` then `make check` before every commit.
 - Game logic goes in `GameCore`, never in the app. It must not import UIKit,
   SwiftUI or other Apple-only frameworks, and every behavior gets a test there.
 - The app uses `GameCore` as a separate module, so anything it needs must be `public`.
-- Randomness and storage are injected into `GameCore` (seedable RNG, storage
-  abstraction with an in-memory version) so tests and UI tests are deterministic;
-  the app chooses where data is saved.
+- Randomness and storage must be injected into `GameCore` (a seedable RNG; a
+  storage abstraction with an in-memory implementation) so tests and UI tests
+  are deterministic; the app chooses where data is saved.
 - Swift 6 language mode everywhere. Core and app unit tests use Swift Testing
   (`import Testing`); UI tests use XCTest/XCUITest.
 - UI tests find elements by accessibility identifiers from `Shared/AccessibilityID.swift`.
