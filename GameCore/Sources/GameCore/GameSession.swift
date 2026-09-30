@@ -6,6 +6,17 @@
 /// independent games. Given the same seed and the same actions, a session
 /// always ends up in the same state, which makes games reproducible in tests.
 ///
+/// ## Undo and redo
+///
+/// The session remembers the last ``undoLimit`` moves. ``undo()`` takes back
+/// the most recent one and ``redo()`` plays it again exactly, with the same
+/// spawned tile; several undos and redos in a row step back and forth through
+/// the same moves. A new swipe after an undo draws a new random tile and
+/// forgets the undone moves, so they can't be redone. The limit counts moves
+/// on either side of the current state: after five moves the last three can
+/// be undone, and after undoing two of them and swiping again, the remaining
+/// one and the new swipe can.
+///
 /// ## High score
 ///
 /// ``highScore`` is the best score reached in the session's variant, including
@@ -24,6 +35,10 @@ public struct GameSession: Hashable, Sendable {
     /// Always at least ``score``.
     public private(set) var highScore: Int
 
+    /// The most recent moves that can be undone, oldest first.
+    private var undoHistory: [HistoryEntry] = []
+    /// The moves that can be redone, the next one last.
+    private var redoMoves: [MoveRecord] = []
     /// Draws the starting tiles and the tile each move spawns.
     private var generator: SplitMix64
 
@@ -66,6 +81,30 @@ public struct GameSession: Hashable, Sendable {
         self.generator = SplitMix64(seed: seed)
     }
 
+    /// The number of moves the session remembers for undo.
+    public static let undoLimit = 3
+
+    /// Whether ``undo()`` can take back a move.
+    public var canUndo: Bool {
+        !undoHistory.isEmpty
+    }
+
+    /// Whether ``redo()`` can play an undone move again.
+    public var canRedo: Bool {
+        !redoMoves.isEmpty
+    }
+
+    /// The number of moves that ``undo()`` can take back in a row, at most
+    /// ``undoLimit``.
+    public var undoCount: Int {
+        undoHistory.count
+    }
+
+    /// The number of undone moves that ``redo()`` can play again in a row.
+    public var redoCount: Int {
+        redoMoves.count
+    }
+
     /// Whether the game is over: no swipe changes the board. Undo may still
     /// be available.
     public var isGameOver: Bool {
@@ -77,23 +116,67 @@ public struct GameSession: Hashable, Sendable {
     ///
     /// - Returns: The move, whose ``Move/slide`` and ``Move/spawn`` describe
     ///   how to animate it, or `nil` if the swipe doesn't change the board. Such
-    ///   a swipe is ignored: the session is left exactly as it was.
+    ///   a swipe is ignored: the session is left exactly as it was, and the
+    ///   moves that can be redone are kept.
     @discardableResult
     public mutating func move(_ direction: Direction) -> Move? {
         guard let move = rules.move(direction, on: board, using: &generator) else { return nil }
+        redoMoves.removeAll()
+        if undoHistory.count == Self.undoLimit {
+            undoHistory.removeFirst()
+        }
+        apply(move)
+        return move
+    }
+
+    /// Takes back the most recent move, restoring the board and score from
+    /// before it. The move can then be redone.
+    ///
+    /// - Returns: The move that was taken back, for animating it in reverse,
+    ///   or `nil` if there is nothing to undo.
+    @discardableResult
+    public mutating func undo() -> Move? {
+        guard let entry = undoHistory.popLast() else { return nil }
+        guard let move = entry.move.replayed(on: entry.before.board) else {
+            preconditionFailure("A recorded move doesn't replay on the board it was played on")
+        }
+        redoMoves.append(entry.move)
+        board = entry.before.board
+        score = entry.before.score
+        return move
+    }
+
+    /// Plays the most recently undone move again, with the same spawned tile.
+    ///
+    /// - Returns: The move, for animating it like ``move(_:)``'s result, or
+    ///   `nil` if there is nothing to redo.
+    @discardableResult
+    public mutating func redo() -> Move? {
+        guard let record = redoMoves.popLast() else { return nil }
+        guard let move = record.replayed(on: board) else {
+            preconditionFailure("An undone move doesn't replay on the board it was undone to")
+        }
         apply(move)
         return move
     }
 
     /// Starts a new game in the same variant with new starting tiles and a
-    /// score of 0. The high score is kept.
+    /// score of 0. Moves of the previous game can't be undone or redone. The
+    /// high score is kept.
     public mutating func restart() {
         board = rules.startingBoard(using: &generator)
         score = 0
+        undoHistory.removeAll()
+        redoMoves.removeAll()
     }
 
-    /// Makes `move`, which was played on the current board, the current state.
+    /// Makes `move`, which was played on the current board, the current state
+    /// and remembers it for undo.
+    ///
+    /// The caller makes room in the history: at most ``undoLimit`` moves can
+    /// be undone or redone in total, so redoing always fits.
     private mutating func apply(_ move: Move) {
+        undoHistory.append(HistoryEntry(before: Snapshot(board: board, score: score), move: MoveRecord(move)))
         board = move.board
         score = Self.adding(move.scoreDelta, to: score)
         highScore = max(highScore, score)
@@ -105,4 +188,36 @@ public struct GameSession: Hashable, Sendable {
         let (sum, overflow) = score.addingReportingOverflow(points)
         return overflow ? .max : sum
     }
+}
+
+/// A board and score at some point of a game.
+struct Snapshot: Hashable, Sendable {
+    var board: Board
+    var score: Int
+}
+
+/// What it takes to replay a move exactly on the board it was played on.
+struct MoveRecord: Hashable, Sendable {
+    var direction: Direction
+    var spawn: Spawn
+
+    init(direction: Direction, spawn: Spawn) {
+        self.direction = direction
+        self.spawn = spawn
+    }
+
+    init(_ move: Move) {
+        self.init(direction: move.direction, spawn: move.spawn)
+    }
+
+    /// The move, replayed on `board`, or `nil` if it doesn't fit `board`.
+    func replayed(on board: Board) -> Move? {
+        Move(direction: direction, spawn: spawn, on: board)
+    }
+}
+
+/// A move that can be undone: the state before it and how to replay it.
+struct HistoryEntry: Hashable, Sendable {
+    var before: Snapshot
+    var move: MoveRecord
 }
