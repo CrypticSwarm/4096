@@ -214,6 +214,12 @@ public struct GameSession: Hashable, Sendable {
         redoMoves.removeAll()
     }
 
+    /// Raises the high score to `score` if that is higher, for example to a
+    /// stored high score newer than the session's.
+    mutating func raiseHighScore(to score: Int) {
+        highScore = max(highScore, score)
+    }
+
     /// Makes `move`, which was played on the current board, the current state
     /// and remembers it for undo.
     ///
