@@ -8,7 +8,11 @@ Native iOS game "4096" (2048 with a 4096 goal tile). See README.md for details.
   `swift` is not on PATH, try `export PATH=$HOME/.local/swift/usr/bin:$PATH`.
 - Only `GameCore` can be built and tested locally. App and UI test code is
   only compiled by the `iOS` GitHub Actions workflow (macOS runner); check its
-  annotations and job summary. Screenshots come from its `screenshots` artifact.
+  annotations and job summary. It runs on every branch push. Its UI test
+  screenshots are published to the `ci-screenshots` branch at
+  `<branch>/<short-sha>/<name>.png`, where `<name>` is the attachment's name
+  (readable via raw.githubusercontent.com), and uploaded as the `screenshots`
+  artifact.
 
 ## Commands
 
