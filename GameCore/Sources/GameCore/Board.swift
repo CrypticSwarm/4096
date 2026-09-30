@@ -124,9 +124,11 @@ public struct Board: Hashable, Sendable {
         cells.max().flatMap { $0 == 0 ? nil : Self.value(ofExponent: $0) }
     }
 
-    /// Whether some direction would change the board: a cell is empty or two
-    /// orthogonally adjacent tiles can merge. The game is over when this is
-    /// `false`.
+    /// Whether the game can go on: a cell is empty or two orthogonally
+    /// adjacent tiles can merge. The game is over when this is `false`.
+    ///
+    /// On a board with at least one tile this is `true` exactly when sliding
+    /// in some direction changes the board.
     public var hasAvailableMoves: Bool {
         for row in 0..<size {
             for column in 0..<size {
