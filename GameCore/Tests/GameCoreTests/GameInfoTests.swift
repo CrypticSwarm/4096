@@ -1,7 +1,7 @@
 import GameCore
 import Testing
 
-@Suite struct GameInfoTests {
+struct GameInfoTests {
     @Test func titleIsGameName() {
         #expect(GameInfo.title == "4096")
     }

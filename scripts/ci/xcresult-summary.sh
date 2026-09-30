@@ -2,8 +2,8 @@
 # Usage: scripts/ci/xcresult-summary.sh <result.xcresult> <xcodebuild.log> [attachments-dir]
 #
 # Prints a Markdown summary of an xcodebuild test run (counts, failing tests,
-# build errors, exported attachments) for $GITHUB_STEP_SUMMARY. Requires
-# Xcode 16+ (xcresulttool test-results) and jq.
+# build errors, exported attachments) for $GITHUB_STEP_SUMMARY. Used by
+# `make ios-summary`. Requires Xcode 16+ (xcresulttool test-results) and jq.
 set -uo pipefail
 
 result=$1
@@ -27,12 +27,13 @@ else
     echo "**No test results** (the build probably failed before tests ran)."
 fi
 
-if [[ -f "$log" ]] && grep -q ': error: ' "$log"; then
+errors=$(grep -s ': error: ' "$log" | sort -u | head -n 30)
+if [[ -n "$errors" ]]; then
     echo
     echo "<details open><summary>Errors from xcodebuild</summary>"
     echo
     echo '```'
-    grep ': error: ' "$log" | sort -u | head -n 30
+    echo "$errors"
     echo '```'
     echo "</details>"
 fi

@@ -19,28 +19,34 @@ if [[ "${GITHUB_ACTIONS:-}" != true ]]; then
     exec "$@"
 fi
 
+raw=$(mktemp)
 log=$(mktemp)
-trap 'rm -f "$log"' EXIT
+trap 'rm -f "$raw" "$log"' EXIT
 
-"$@" 2>&1 | tee "$log"
+"$@" 2>&1 | tee "$raw"
 status=${PIPESTATUS[0]}
 
-# Strip ANSI colors, then extract "severity<TAB>file<TAB>line<TAB>col<TAB>message":
-#   /abs/or/rel/File.swift:12:5: error: message       (swiftc, swift-format)
-#   ✘ Test foo() recorded an issue at File.swift:7:9: Expectation failed: ...
-tab=$'\t'
+# Strip ANSI colors and terminal hyperlinks (swiftc wraps diagnostic group names).
 esc=$'\033'
-diagnostics=$(sed -e "s/${esc}\\[[0-9;]*m//g" "$log" | sed -nE \
-    -e "s/^([^ :]+\\.swift):([0-9]+):([0-9]+): (error|warning): (.*)$/\\4${tab}\\1${tab}\\2${tab}\\3${tab}\\5/p" \
-    -e "s/^.* recorded an issue.* at ([^ :]+\\.swift):([0-9]+):([0-9]+): (.*)$/error${tab}\\1${tab}\\2${tab}\\3${tab}\\4/p" |
-    sort -u)
+sed -e "s/${esc}\\[[0-9;]*m//g" -e "s/${esc}\\]8;;[^${esc}]*${esc}\\\\//g" "$raw" >"$log"
+
+# Extract "severity|file|line|col|message" separated by the ASCII unit
+# separator (not a whitespace IFS, so an empty col survives `read`):
+#   /abs/or/rel/File.swift:12:5: error: message       (swiftc, swift-format)
+#   /abs/File.swift:12: error: Suite.test : XCTAssert… (XCTest on Linux)
+#   ✘ Test foo() recorded an issue at File.swift:7:9: Expectation failed: ...
+sep=$'\037'
+diagnostics=$(sed -nE \
+    -e "s/^([^ :]+\\.swift):([0-9]+):(([0-9]+):)? (error|warning): (.*)$/\\5${sep}\\1${sep}\\2${sep}\\4${sep}\\6/p" \
+    -e "s/^.* recorded an issue.* at ([^ :]+\\.swift):([0-9]+):([0-9]+): (.*)$/error${sep}\\1${sep}\\2${sep}\\3${sep}\\4/p" \
+    "$log" | sort -u)
 
 # Workflow-command escaping (data and property values).
 escape_data() { local s=${1//%/%25}; s=${s//$'\r'/%0D}; printf '%s' "${s//$'\n'/%0A}"; }
 escape_prop() { local s; s=$(escape_data "$1"); s=${s//:/%3A}; printf '%s' "${s//,/%2C}"; }
 
 report=""
-while IFS=$tab read -r severity file line col message; do
+while IFS=$sep read -r severity file line col message; do
     [[ -n "$severity" ]] || continue
     # Swift Testing reports only the file name; find it in the repo.
     if [[ "$file" != */* ]]; then
@@ -49,8 +55,9 @@ while IFS=$tab read -r severity file line col message; do
     fi
     file=${file#"$PWD"/}
     file=${file#./}
-    echo "::${severity} file=$(escape_prop "$file"),line=${line},col=${col},title=$(escape_prop "$label")::$(escape_data "$message")"
-    report+="- \`${file}:${line}:${col}\` ${severity}: ${message}"$'\n'
+    location="${file}:${line}${col:+:$col}"
+    echo "::${severity} file=$(escape_prop "$file"),line=${line}${col:+,col=$col},title=$(escape_prop "$label")::$(escape_data "$message")"
+    report+="- \`${location}\` ${severity}: ${message}"$'\n'
 done <<<"$diagnostics"
 
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
@@ -69,7 +76,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
             echo "<details><summary>Last 60 lines of output</summary>"
             echo
             echo '```'
-            sed -e "s/${esc}\\[[0-9;]*m//g" "$log" | tail -n 60
+            tail -n 60 "$log"
             echo '```'
             echo "</details>"
         fi

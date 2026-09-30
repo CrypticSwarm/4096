@@ -10,6 +10,10 @@ result=$1
 out=$2
 
 rm -rf "$out"
+if [[ ! -d "$result" ]]; then
+    echo "No result bundle at $result; nothing to export." >&2
+    exit 0
+fi
 mkdir -p "$out"
 xcrun xcresulttool export attachments --path "$result" --output-path "$out"
 

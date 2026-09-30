@@ -3,6 +3,7 @@ name: Core
 
 on:
   push:
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
@@ -26,6 +27,8 @@ jobs:
       - name: Install make
         run: apt-get update -qq && apt-get install -y -qq --no-install-recommends make
 
+      # Same steps as `make check`, split so each gets its own annotations and
+      # summary entry and lint still runs when the build or tests fail.
       - name: Build
         run: scripts/ci/annotate.sh "Core build" make build
 

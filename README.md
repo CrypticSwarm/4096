@@ -13,6 +13,7 @@ session (undo/redo, persistence, high scores) and game UI are still to come.
 | --- | --- |
 | `GameCore/` | Swift package with all game logic. No UIKit/SwiftUI; builds and tests on Linux. |
 | `Game4096/` | SwiftUI app target (sources and asset catalog). |
+| `Shared/` | Files compiled into both the app and the UI tests (e.g. accessibility identifiers). |
 | `Game4096Tests/` | App unit tests (Swift Testing), hosted in the app. |
 | `Game4096UITests/` | XCUITests that drive the app and attach screenshots. |
 | `project.yml` | XcodeGen spec for the Xcode project. The `.xcodeproj` is generated, not committed. |
@@ -24,7 +25,8 @@ session (undo/redo, persistence, high scores) and game UI are still to come.
 
 ### Core package (Linux or macOS)
 
-Needs a Swift 6 toolchain (CI uses Swift 6.4), which includes `swift format`.
+Needs a Swift 6 toolchain, which includes `swift format`. Use the same Swift
+version as CI (see below) so `make lint` agrees with CI.
 
 ```sh
 make build    # swift build the GameCore package
@@ -42,38 +44,46 @@ Needs Xcode 26 (with an iPhone 17 simulator), [XcodeGen](https://github.com/yona
 (`brew install xcodegen`) and optionally `xcbeautify`.
 
 ```sh
-make ios-project      # generate Game4096.xcodeproj from project.yml
-make ios-test         # build and run unit + UI tests on the simulator
+make ios-project      # generate Game4096.xcodeproj from project.yml (to open it in Xcode)
+make ios-test         # regenerate, then run app unit, UI and GameCore tests on the simulator
 make ios-attachments  # export screenshots from the last run to build/attachments
+make ios-summary      # print a Markdown summary of the last run
 ```
 
+`ios-test` writes `build/TestResults.xcresult` and `build/xcodebuild.log`.
 Pick a different simulator with
 `make ios-test IOS_DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro,OS=latest'`.
-After editing `project.yml` or adding files, rerun `make ios-project`.
 
 ## Continuous integration
 
 | Workflow | Job | Runs on | Triggers |
 | --- | --- | --- | --- |
-| `Core` (`core.yml`) | Build, test and lint (Linux) | `swift:6.4.0-noble` container | every push and pull request, manual |
-| `iOS` (`ios.yml`) | Build and test (iOS Simulator) | `macos-26`, Xcode 26.6 | pull requests, pushes to `master`, manual; skipped for doc-only changes |
+| `Core` (`core.yml`) | Build, test and lint (Linux) | Swift container on Ubuntu | every branch push and pull request, manual |
+| `iOS` (`ios.yml`) | Build and test (iOS Simulator) | macOS runner | pull requests, pushes to `master`, manual; skipped when only Markdown, `.editorconfig` or `.swift-format` change |
 
 Both jobs call the same `make` targets as local development. Failures show up
 as annotations on the commit or pull request and in each run's job summary.
 The iOS job uploads two artifacts: `screenshots` (PNG attachments from the UI
 tests) and `test-results` (the `.xcresult` bundle and raw `xcodebuild` log).
 
-The Xcode version is set in `ios.yml` (`XCODE_VERSION`) and the simulator in the
-`Makefile` (`IOS_DESTINATION`); change them together, checking the
+Where versions are pinned:
+
+- Swift: the `container` image in `core.yml`.
+- Xcode and XcodeGen: `XCODE_VERSION` and `XCODEGEN_VERSION` (plus checksum) in `ios.yml`.
+- macOS runner image: `runs-on` in `ios.yml`.
+- Simulator: `IOS_DESTINATION` in the `Makefile`.
+- iOS deployment target: `project.yml` and `GameCore/Package.swift`.
+
+The runner image, Xcode version and simulator must agree; check the
 [runner image readme](https://github.com/actions/runner-images/tree/main/images/macos)
-for what is installed.
+when changing any of them.
 
 ## Developing without a Mac
 
 The app can only be built and run on macOS, so this project relies on CI:
 
 - Game logic belongs in `GameCore` and is covered by tests that run on Linux
-  with `make test`.
+  with `make test` (CI also runs them on the iOS simulator).
 - The app, its unit tests and UI tests run only in the iOS workflow. To see the
   app, download the `screenshots` artifact from a workflow run.
 - There is no code signing yet; everything targets the simulator. Getting

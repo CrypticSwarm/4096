@@ -1,11 +1,10 @@
-# Builds the iOS app and runs its unit and UI tests on a simulator.
+# Builds the iOS app and runs its unit, UI and GameCore tests on a simulator.
 name: iOS
 
 on:
   pull_request:
     paths-ignore: &docs
       - "**.md"
-      - LICENSE
       - .editorconfig
       - .swift-format
   push:
@@ -25,6 +24,7 @@ env:
   # readme) and provide the simulator named by IOS_DESTINATION in the Makefile.
   XCODE_VERSION: "26.6"
   XCODEGEN_VERSION: "2.46.0"
+  XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
 
 jobs:
   ios:
@@ -43,20 +43,25 @@ jobs:
         run: |
           curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
             "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
       - name: Build and test
-        run: make ios-test XCBEAUTIFY="xcbeautify --renderer github-actions"
+        # annotate.sh adds the output tail to the job summary on failure (e.g.
+        # xcodegen errors); xcbeautify annotates compiler and test failures.
+        run: scripts/ci/annotate.sh "iOS build and test" make ios-test XCBEAUTIFY="xcbeautify --renderer github-actions"
 
       - name: Export screenshots
-        if: ${{ !cancelled() && hashFiles('build/TestResults.xcresult/Info.plist') != '' }}
+        if: ${{ !cancelled() }}
         run: make ios-attachments
 
       - name: Job summary
         if: ${{ !cancelled() }}
-        run: scripts/ci/xcresult-summary.sh build/TestResults.xcresult build/xcodebuild.log build/attachments >> "$GITHUB_STEP_SUMMARY"
+        run: make ios-summary >> "$GITHUB_STEP_SUMMARY"
 
+      # Paths match BUILD_DIR, ATTACHMENTS_DIR, RESULT_BUNDLE and XCODEBUILD_LOG
+      # in the Makefile.
       - name: Upload screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
