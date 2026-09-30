@@ -4,6 +4,7 @@
 /// so the identifiers have a single definition.
 enum AccessibilityID {
     static let title = "title"
+    static let newGame = "newGame"
     /// The board container; its accessibility value is the board's notation.
     static let board = "board"
 

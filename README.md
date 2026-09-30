@@ -4,9 +4,9 @@ A native iOS take on 2048 where the goal tile is 4096. Built with SwiftUI; the
 game rules live in a platform-independent Swift package so they can be
 developed and tested without a Mac.
 
-Status: the game engine is done. The app still shows a placeholder title
-screen; the session (undo/redo, persistence, high scores) and game UI are still
-to come.
+Status: the game engine is done, and the app plays the classic 4×4 game with
+2048's look and animations. The session (undo/redo, persistence, high scores),
+score display and game-over screens are still to come.
 
 ## Repository layout
 
