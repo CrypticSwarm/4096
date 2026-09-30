@@ -108,7 +108,7 @@ struct BoardTests {
     }
 
     /// The limits keep sums far from overflow: the largest board full of
-    /// tiles one below the maximum merges them all in one slide.
+    /// tiles of half the maximum value merges them all in one slide.
     @Test func largestSumsDontOverflow() throws {
         let almostMax = Board.maxTileValue / 2
         let board = try Board(rows: Array(repeating: Array(repeating: almostMax, count: 16), count: 16))

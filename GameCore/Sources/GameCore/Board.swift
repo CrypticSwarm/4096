@@ -13,7 +13,7 @@
 /// `Int` overflow even for boards decoded from tampered data. Two tiles of the
 /// largest value don't merge. The limit is unreachable in play: the sum of all
 /// tiles grows only by one spawned tile per move, so with the classic 2s and 4s
-/// a 2^48 tile takes more than 2^46 moves.
+/// a 2^48 tile takes about 2^46 moves.
 ///
 /// The board is a plain grid of values with no tile identities. Code that
 /// animates tiles tracks identity itself from the ``TileMovement`` list of each

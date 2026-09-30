@@ -10,8 +10,8 @@ public struct TileMovement: Hashable, Sendable {
     ///
     /// Both tiles of a merge are flagged and move to the same cell, which then
     /// holds one tile of twice their value (listed in ``SlideResult/merges``).
-    /// Of the two, the one that started nearer the edge the tiles moved toward
-    /// is the one the other slid into.
+    /// The tile of the pair that started nearer the edge the tiles moved
+    /// toward is placed first, and the other joins it at its ``to``.
     public internal(set) var didMerge: Bool
 
     /// Creates a movement record, for example to describe an expected slide

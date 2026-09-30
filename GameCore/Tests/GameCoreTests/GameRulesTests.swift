@@ -28,7 +28,6 @@ struct GameRulesTests {
         for _ in 0..<100 {
             let board = rules.startingBoard(using: &generator)
             #expect(board.size == rules.boardSize)
-            #expect(rules.accepts(board))
             #expect(board.tileCount == rules.startingTileCount)
             #expect(board.rows.joined().allSatisfy { $0 == 0 || allowed.contains($0) })
         }

@@ -150,17 +150,18 @@ struct MoveTests {
     /// and `Int.random(in:using:)`; if it fails after a toolchain update, the
     /// seeded UI tests need new expectations too.
     @Test func seedProducesAKnownGame() throws {
-        var generator = SplitMix64(seed: 42)
+        // Seed 22 draws both values, so the value roll is pinned too.
+        var generator = SplitMix64(seed: 22)
         var board = GameRules.classic.startingBoard(using: &generator)
-        #expect(board.rows == [[0, 0, 0, 0], [2, 0, 0, 0], [0, 0, 0, 2], [0, 0, 0, 0]])
+        #expect(board.rows == [[0, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [4, 0, 0, 0]])
 
         let expected: [(Direction, Spawn, score: Int)] = [
-            (.left, Spawn(position: at(0, 0), value: 2), 0),
-            (.up, Spawn(position: at(1, 1), value: 2), 4),
-            (.right, Spawn(position: at(1, 1), value: 2), 4),
-            (.down, Spawn(position: at(0, 2), value: 2), 8),
-            (.left, Spawn(position: at(1, 3), value: 2), 0),
-            (.up, Spawn(position: at(2, 3), value: 2), 4),
+            (.left, Spawn(position: at(3, 1), value: 2), 0),
+            (.up, Spawn(position: at(1, 2), value: 2), 0),
+            (.right, Spawn(position: at(3, 0), value: 4), 4),
+            (.down, Spawn(position: at(1, 0), value: 2), 0),
+            (.left, Spawn(position: at(1, 3), value: 2), 8),
+            (.up, Spawn(position: at(1, 1), value: 2), 0),
         ]
         for (direction, spawn, score) in expected {
             let move = try #require(GameRules.classic.move(direction, on: board, using: &generator))
@@ -168,6 +169,6 @@ struct MoveTests {
             #expect(move.scoreDelta == score)
             board = move.board
         }
-        #expect(board.rows == [[4, 8, 0, 2], [0, 0, 0, 0], [0, 0, 0, 2], [0, 0, 0, 0]])
+        #expect(board.rows == [[2, 2, 0, 2], [4, 2, 0, 0], [8, 0, 0, 0], [0, 0, 0, 0]])
     }
 }
