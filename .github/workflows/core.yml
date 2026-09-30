@@ -3,8 +3,8 @@ name: Core
 
 on:
   push:
+    # Every pushed branch, PR branches included, so no pull_request trigger.
     branches: ["**"]
-  pull_request:
   workflow_dispatch:
 
 concurrency:

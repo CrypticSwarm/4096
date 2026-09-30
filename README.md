@@ -58,7 +58,7 @@ Pick a different simulator with
 
 | Workflow | Job | Runs on | Triggers |
 | --- | --- | --- | --- |
-| `Core` (`core.yml`) | Build, test and lint (Linux) | Swift container on Ubuntu | every branch push and pull request, manual |
+| `Core` (`core.yml`) | Build, test and lint (Linux) | Swift container on Ubuntu | every branch push, manual |
 | `iOS` (`ios.yml`) | Build and test (iOS Simulator) | macOS runner | pull requests, pushes to `master`, manual; skipped when only Markdown, `.editorconfig` or `.swift-format` change |
 
 Both jobs call the same `make` targets as local development. Failures show up
