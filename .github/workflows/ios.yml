@@ -1,0 +1,76 @@
+# Builds the iOS app and runs its unit and UI tests on a simulator.
+name: iOS
+
+on:
+  pull_request:
+    paths-ignore: &docs
+      - "**.md"
+      - LICENSE
+      - .editorconfig
+      - .swift-format
+  push:
+    branches: [master]
+    paths-ignore: *docs
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
+
+env:
+  # Must be installed on the runs-on image (see the actions/runner-images
+  # readme) and provide the simulator named by IOS_DESTINATION in the Makefile.
+  XCODE_VERSION: "26.6"
+  XCODEGEN_VERSION: "2.46.0"
+
+jobs:
+  ios:
+    name: Build and test (iOS Simulator)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select --switch "/Applications/Xcode_${XCODE_VERSION}.app"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Build and test
+        run: make ios-test XCBEAUTIFY="xcbeautify --renderer github-actions"
+
+      - name: Export screenshots
+        if: ${{ !cancelled() && hashFiles('build/TestResults.xcresult/Info.plist') != '' }}
+        run: make ios-attachments
+
+      - name: Job summary
+        if: ${{ !cancelled() }}
+        run: scripts/ci/xcresult-summary.sh build/TestResults.xcresult build/xcodebuild.log build/attachments >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: build/attachments
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: |
+            build/TestResults.xcresult
+            build/xcodebuild.log
+          if-no-files-found: ignore

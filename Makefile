@@ -58,8 +58,7 @@ ios-test: ios-project ## Build and run app unit and UI tests on the simulator (m
 		2>&1 | tee $(BUILD_DIR)/xcodebuild.log | $(XCBEAUTIFY)
 
 ios-attachments: ## Export test screenshots from the last ios-test run (macOS)
-	rm -rf $(ATTACHMENTS_DIR)
-	xcrun xcresulttool export attachments --path $(RESULT_BUNDLE) --output-path $(ATTACHMENTS_DIR)
+	scripts/export-attachments.sh $(RESULT_BUNDLE) $(ATTACHMENTS_DIR)
 
 clean: ## Remove build outputs and the generated project
 	rm -rf $(PACKAGE)/.build $(BUILD_DIR) $(PROJECT)
