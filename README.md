@@ -41,6 +41,19 @@ to come.
   which merged, which spawned); `reset(to:)` renumbers all tiles after any
   other change, such as a new game.
 
+## Launch arguments
+
+For UI tests and development, the app reads these launch arguments (parsed by
+`LaunchConfiguration` in `GameCore`; others are ignored):
+
+| Argument | Effect |
+| --- | --- |
+| `-seed <UInt64>` | Seeds the random number generator, so spawns (and the starting board, without `-board`) are reproducible. |
+| `-board <notation>` | Starts from this board instead of a new game. Rows top to bottom separated by `;`, values separated by `,`, 0 for empty, no spaces: `-board "2,2,0,0;0,0,0,0;0,0,0,0;0,0,0,4"`. The board's size (2 to 16) picks the game's board size. |
+
+The board element's accessibility value is the current board in the same
+notation, so UI tests can check the exact state.
+
 ## Local development
 
 ### Core package (Linux or macOS)

@@ -217,4 +217,6 @@ public enum BoardError: Error, Hashable, Sendable {
     case notSquare
     /// A value is neither 0 nor a power of two from 2 through ``Board/maxTileValue``.
     case invalidValue(Int, at: Position)
+    /// Text given to ``Board/init(notation:)`` isn't an integer.
+    case unreadableValue(String)
 }

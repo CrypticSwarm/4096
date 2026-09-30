@@ -30,8 +30,9 @@ Run `make format` then `make check` before every commit.
   slides, spawns, rules; see README.md "Game engine"); session and persistence
   go here as they are added.
 - `Game4096/`: SwiftUI app. `Game4096Tests/`: app unit tests. `Game4096UITests/`: XCUITests.
-- `Shared/`: compiled into both the app and the UI tests (accessibility identifiers,
-  later launch-argument keys).
+- `Shared/`: compiled into both the app and the UI tests (accessibility identifiers).
+  Launch arguments are parsed and built by `LaunchConfiguration` in `GameCore`,
+  which the UI tests also link (see README.md "Launch arguments").
 - `project.yml`: XcodeGen spec; never commit a generated `.xcodeproj`.
 - `.github/workflows/`: `core.yml` (Linux), `ios.yml` (macOS simulator).
 - `scripts/`: helpers called by the Makefile and CI.
