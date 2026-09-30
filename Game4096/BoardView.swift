@@ -17,7 +17,8 @@ import SwiftUI
 /// value or "Empty", with its position as extra content and actions to slide
 /// the tiles. The cells, not the tiles, carry the labels, so they are in
 /// reading order, include empty cells and never lag behind an animation.
-/// With VoiceOver running, each move is announced.
+/// A slide action that can't move the tiles is announced here; the screen
+/// announces changes (see `MoveAnnouncement`).
 struct BoardView: View {
     let layout: TileLayout
     /// Called for the slide actions of the accessibility elements; returns
@@ -25,7 +26,6 @@ struct BoardView: View {
     let onMove: @MainActor (Direction) -> Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     /// The tiles drawn, which trail `layout.tiles` while a move animates.
     @State private var shownTiles: [ShownTile]
     @State private var animation: Task<Void, Never>?
@@ -82,9 +82,6 @@ struct BoardView: View {
             } else {
                 animation = Task { await run(steps) }
             }
-            if voiceOverEnabled, let transition = target.lastTransition {
-                AccessibilityNotification.Announcement(MoveAnnouncement.text(for: transition)).post()
-            }
         }
         .onDisappear {
             // Don't leave a half-finished animation to reappear with.
@@ -114,8 +111,8 @@ struct BoardView: View {
             .accessibilityAction(named: "Slide right") { slide(.right) }
     }
 
-    /// Plays a move for a VoiceOver action; a move that happens is announced
-    /// when the layout changes, one that doesn't is announced here.
+    /// Plays a move for a VoiceOver action, announcing when the tiles can't
+    /// move.
     private func slide(_ direction: Direction) {
         if !onMove(direction) {
             AccessibilityNotification.Announcement(MoveAnnouncement.blockedText(for: direction)).post()

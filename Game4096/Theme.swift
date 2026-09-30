@@ -27,6 +27,31 @@ enum Theme {
     /// The game's title.
     static let titleFont = Font.system(size: 64, weight: .bold)
 
+    /// The score boxes, in the board's color as in the original.
+    static let scoreBox = board
+    /// The score boxes with Increase Contrast, where the original's light
+    /// text on the board color is below 3:1.
+    static let highContrastScoreBox = darkText
+    /// The name of a score ("SCORE", "BEST").
+    static let scoreLabel = Color(hex: 0xEEE4DA)
+    /// The floating "+N" after a move scores.
+    static let scoreGain = darkText.opacity(0.9)
+
+    /// The message over the board after a win: the winning tile's color, as
+    /// the original uses its 2048 gold, translucent so the board shows
+    /// through; nearly opaque with Increase Contrast.
+    static func winMessageBackground(winningValue: Int, increasedContrast: Bool) -> Color {
+        tileStyle(for: winningValue).background.opacity(increasedContrast ? 0.95 : 0.7)
+    }
+    /// The message over the board when the game is over: the original's
+    /// color, a little more opaque than its 0.73 so the text stays readable
+    /// over tiles; nearly opaque with Increase Contrast.
+    static func gameOverMessageBackground(increasedContrast: Bool) -> Color {
+        Color(hex: 0xEEE4DA).opacity(increasedContrast ? 0.95 : 0.8)
+    }
+    /// The size of the win and game over titles.
+    static let messageTitleFont = Font.system(size: 48, weight: .bold)
+
     /// How a tile of some value looks.
     struct TileStyle: Equatable {
         var background: Color
@@ -132,18 +157,72 @@ enum Theme {
     }
 }
 
+/// How text fits the space it gets, at every Dynamic Type size, so no text
+/// is ever cut off:
+///
+/// - Game chrome (the header, the goal row, the buttons, the messages over
+///   the board and the storage note) follows Dynamic Type up to
+///   ``Theme/largestChromeTextSize``; past it the buttons and scores offer
+///   the Large Content Viewer. The layout around it adapts (the scores move
+///   under the title, the message buttons stack), and the board takes what
+///   is left.
+/// - Titles, numbers and button labels stay on one line and shrink to fit
+///   (``fitOnOneLine(minimumScale:)``).
+/// - Sentences wrap (``wrapToFit(maxLines:)``); in a bounded area, such as a
+///   message over the board, up to a number of lines, then they shrink.
+///
+/// Tile numbers are sized to their tile instead (see `Theme.tileFontSize`).
+extension Theme {
+    /// The largest Dynamic Type size game chrome follows.
+    static let largestChromeTextSize = DynamicTypeSize.accessibility1
+}
+
+extension View {
+    /// Follows Dynamic Type up to ``Theme/largestChromeTextSize``.
+    func chromeTextSize() -> some View {
+        dynamicTypeSize(...Theme.largestChromeTextSize)
+    }
+
+    /// One line that shrinks, down to `minimumScale`, rather than being cut
+    /// off: for titles, numbers and button labels.
+    func fitOnOneLine(minimumScale: CGFloat = 0.5) -> some View {
+        lineLimit(1).minimumScaleFactor(minimumScale)
+    }
+
+    /// Wraps onto as many lines as it needs, or with `maxLines`, onto up to
+    /// that many lines and then shrinks: for sentences.
+    @ViewBuilder func wrapToFit(maxLines: Int? = nil) -> some View {
+        if let maxLines {
+            lineLimit(maxLines).minimumScaleFactor(0.7)
+        } else {
+            lineLimit(nil).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 /// The original's buttons: light bold text on a brown rounded rectangle, at
-/// least 44 points tall.
+/// least 44 points tall. A disabled button takes the empty cells' color,
+/// with dimmed dark text.
 struct GameButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline.bold())
-            .lineLimit(1)
-            .foregroundStyle(Theme.lightText)
-            .padding(.horizontal, 16)
-            .frame(minHeight: 44)
-            .background(Theme.button, in: RoundedRectangle(cornerRadius: 6))
-            .opacity(configuration.isPressed ? 0.8 : 1)
+        GameButton(configuration: configuration)
+    }
+
+    private struct GameButton: View {
+        let configuration: Configuration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .font(.headline.bold())
+                .fitOnOneLine(minimumScale: 0.7)
+                .foregroundStyle(isEnabled ? Theme.lightText : Theme.darkText.opacity(0.75))
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .background(isEnabled ? Theme.button : Theme.emptyCell, in: RoundedRectangle(cornerRadius: 6))
+                .opacity(configuration.isPressed ? 0.8 : 1)
+                .accessibilityShowsLargeContentViewer()
+        }
     }
 }
 

@@ -105,3 +105,39 @@ struct MoveAnnouncementTests {
         #expect(MoveAnnouncement.blockedText(for: .up) == "Can't move up.")
     }
 }
+
+@MainActor
+struct ChangeAnnouncementTests {
+    @Test func announcesEachChangeWithTheScoreAndTheMessage() throws {
+        // Swiping left makes 4096 and leaves no move.
+        let board = try Board(notation: "2048,2048,4,8;8,2,32,16;2,8,2,8;8,2,8,2")
+        let model = GameModel(
+            configuration: LaunchConfiguration(seed: 42, board: board), storage: InMemoryGameStorage())
+
+        model.perform(.left)
+        let move = try MoveAnnouncement.text(for: #require(model.lastChange), in: model)
+        #expect(move.hasPrefix("Moved left. Made 4096. New "))
+        #expect(move.hasSuffix(" Score 4096. You win! You made 4096. Keep going for a bigger tile?"))
+
+        model.keepPlaying()
+        #expect(
+            try MoveAnnouncement.text(for: #require(model.lastChange), in: model)
+                == "Keep playing. Score 4096. Game over! No moves left. You can still undo.")
+
+        model.undo()
+        #expect(try MoveAnnouncement.text(for: #require(model.lastChange), in: model) == "Move undone. Score 0.")
+
+        model.redo()
+        let redo = try MoveAnnouncement.text(for: #require(model.lastChange), in: model)
+        #expect(redo.hasPrefix("Redone. Moved left. Made 4096. New "))
+
+        model.requestNewGame()
+        model.confirmNewGame()
+        let tiles = model.layout.tiles.map {
+            "\($0.value) in row \($0.position.row + 1), column \($0.position.column + 1)"
+        }
+        #expect(
+            try MoveAnnouncement.text(for: #require(model.lastChange), in: model)
+                == "New game. Tiles: \(tiles[0]) and \(tiles[1]). Score 0.")
+    }
+}

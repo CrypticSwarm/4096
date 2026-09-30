@@ -4,10 +4,11 @@ A native iOS take on 2048 where the goal tile is 4096. Built with SwiftUI; the
 game rules live in a platform-independent Swift package so they can be
 developed and tested without a Mac.
 
-Status: the game engine and the game session (undo/redo, win and game over,
-high scores, saving) are done in `GameCore`, and the app plays the classic 4×4
-game with 2048's look and animations. Wiring the session into the app (score,
-undo/redo buttons, win and game-over screens, saving) is still to come.
+Status: the game is playable: the classic 4×4 game with 2048's look and
+animations, the score and best score, undo and redo of the last three moves,
+a one-time win at 4096 with the option to keep playing, a game over message,
+a confirmed New Game, and the game in progress saved across launches. Game
+variants (such as 5×5) exist in `GameCore` but can't be chosen in the app yet.
 
 ## Repository layout
 
@@ -49,11 +50,19 @@ For UI tests and development, the app reads these launch arguments (parsed by
 
 | Argument | Effect |
 | --- | --- |
-| `-seed <UInt64>` | Seeds the random number generator, so spawns (and the starting board, without `-board`) are reproducible. |
-| `-board <notation>` | Starts from this board instead of a new game. Rows top to bottom separated by `;`, values separated by `,`, 0 for empty, no spaces: `-board "2,2,0,0;0,0,0,0;0,0,0,0;0,0,0,4"`. The board's size (2 to 16) picks the game's board size. |
+| `-seed <UInt64>` | Seeds the random number generator, so spawns (and the starting board of a new game) are reproducible. A saved game keeps its own generator. |
+| `-board <notation>` | Starts from this board instead of the saved game (which the first change then replaces). Rows top to bottom separated by `;`, values separated by `,`, 0 for empty, no spaces, at least one tile: `-board "2,2,0,0;0,0,0,0;0,0,0,0;0,0,0,4"`. The board's size (2 to 16) picks the game's board size. A board with a 4096 tile starts as just won. |
+| `-score <Int>` | The score of the `-board` game (default 0). Only with `-board`. |
+| `-highScore <Int>` | Raises the best score to at least this value (and the stored one, on the first change). |
+| `-storage <memory or folder>` | `memory` keeps games and scores in memory only, so nothing is read or kept; any other value is the name of the folder in Application Support to save in instead of `Saves`. |
+
+Without `-board`, the app continues the game saved in the chosen storage, or
+starts a new one. The UI tests launch with `-storage memory`, except the
+persistence test, which uses a folder of its own and relaunches the app.
 
 The board element's accessibility value is the current board in the same
-notation, so UI tests can check the exact state.
+notation, and the score boxes' values are the scores, so UI tests can check
+the exact state.
 
 ## Game session
 
@@ -82,6 +91,39 @@ atomically) or `InMemoryGameStorage` (tests, previews, UI tests). The formats
 are versioned; a saved game that can't be restored loads as a new game that
 keeps the high score. Storage errors are thrown rather than treated as a missing
 game, so the app can avoid saving over a game it couldn't read.
+
+## App
+
+The SwiftUI app in `Game4096/` is a thin layer over `GameCore`:
+
+- `GameModel` (`@MainActor`, `@Observable`) owns the `GameSession` and the
+  `TileLayout` that draws its board. Every action (move, undo, redo, keep
+  playing, new game) goes through one private `update` method that changes the
+  session, then updates the tiles (a move or redo animates through
+  `layout.apply`; undo and a new game replace the tiles with `layout.reset`),
+  records the change (`lastChange`) and saves the session with `GameStore`.
+  So the tiles, the session and the saved game can't disagree. It also
+  decides which message shows over the board (`overlay`) and whether Undo and
+  Redo are available.
+- Saving: games and best scores are saved in `Application Support/Saves` with
+  `FileGameStorage`, after every change; moving to the background retries a
+  save that failed. If the saved game can't be read, the app plays a new game
+  (keeping the best score if that can be read) without saving, so it doesn't
+  overwrite what it couldn't read, says so under the board, and tries to load
+  it again when the app becomes active, as long as the player hasn't played
+  yet. A failed save is reported the same way and retried on the next change.
+- Views only read the model and call its actions: `ContentView` lays out the
+  title and `ScoreBox`es, the goal and New Game above the board, the board
+  with its `GameMessageView` (win or game over), and Undo and Redo below the
+  board. `BoardView` animates the tiles (`TileAnimation`); `Theme` holds the
+  look, including how text fits at every Dynamic Type size (one line that
+  shrinks for titles, numbers and buttons; wrapping for sentences; a single
+  cap for the game's chrome). With VoiceOver, each change is announced in one sentence group
+  (`MoveAnnouncement`): the move, the score and any message.
+- While the win message shows, moves, undo and redo wait for Keep playing or
+  New Game, as in the original. The game over message covers only the board,
+  so Undo stays available. New Game always asks for confirmation, since it
+  can't be undone.
 
 ## Local development
 

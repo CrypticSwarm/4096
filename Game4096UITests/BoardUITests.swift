@@ -52,7 +52,7 @@ final class BoardUITests: GameUITestCase {
 
     func testNewGameStartsFromTheSeed() throws {
         launch(LaunchConfiguration(seed: Self.seed, board: try Board(notation: Self.fixture)))
-        app.buttons[AccessibilityID.newGame].tap()
+        tapNewGame(confirm: true)
         // The fixture board used no random numbers, so the new game is the
         // seed's first starting board.
         var generator = SplitMix64(seed: Self.seed)
@@ -73,11 +73,10 @@ final class BoardUITests: GameUITestCase {
         XCTAssertEqual(cell(row: 0, column: 3).label, "8")
     }
 
-    /// Apple's automated accessibility checks. Contrast and Dynamic Type are
-    /// deliberate exceptions: the classic tile colors are kept (Increase
-    /// Contrast fixes them), and tile numbers scale with the tile.
+    /// Apple's automated accessibility checks (see
+    /// `GameUITestCase.performAccessibilityAudit()` for the exceptions).
     func testAccessibilityAudit() throws {
         launch(LaunchConfiguration(seed: Self.seed, board: try Board(notation: Self.fixture)))
-        try app.performAccessibilityAudit(for: XCUIAccessibilityAuditType.all.subtracting([.contrast, .dynamicType]))
+        try performAccessibilityAudit()
     }
 }
