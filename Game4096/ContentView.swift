@@ -13,6 +13,7 @@ struct ContentView: View {
     @Bindable var model: GameModel
 
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -118,6 +119,22 @@ struct ContentView: View {
 
     private var board: some View {
         BoardView(layout: model.layout) { model.perform($0) }
+            .overlay {
+                if let overlay = model.overlay {
+                    GameMessageView(
+                        overlay: overlay,
+                        boardSize: model.layout.board.size,
+                        winningValue: model.winningValue,
+                        canUndo: model.canUndo,
+                        onKeepPlaying: { model.keepPlaying() },
+                        onNewGame: { model.requestNewGame() }
+                    )
+                    // Each message comes and goes on its own, also when Keep
+                    // playing reveals that the game is over.
+                    .id(overlay)
+                    .transition(.gameMessage(reduceMotion: reduceMotion))
+                }
+            }
     }
 
     private var controls: some View {

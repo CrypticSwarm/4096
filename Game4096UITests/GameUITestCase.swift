@@ -20,6 +20,8 @@ class GameUITestCase: XCTestCase {
     var newGameButton: XCUIElement { app.buttons[AccessibilityID.newGame] }
     /// The alert asking to confirm a new game.
     var newGameAlert: XCUIElement { app.alerts[AccessibilityID.newGameAlertTitle] }
+    var winMessage: XCUIElement { element(AccessibilityID.winMessage) }
+    var gameOverMessage: XCUIElement { element(AccessibilityID.gameOverMessage) }
 
     /// The element of any type with `identifier`.
     func element(_ identifier: String) -> XCUIElement {
@@ -144,6 +146,30 @@ class GameUITestCase: XCTestCase {
         answerNewGameAlert(confirm: confirm, file: file, line: line)
     }
 
+    /// Waits until `message` (``winMessage`` or ``gameOverMessage``) exists
+    /// and has faded in.
+    func waitForMessage(_ message: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(message.waitForExistence(timeout: 5), "No \(message.identifier)", file: file, line: line)
+        // It exists as soon as it is inserted, then waits for the tiles to
+        // settle and fades in: 1 s in all.
+        _ = XCTWaiter().wait(for: [XCTestExpectation(description: "Message fades in")], timeout: 1.2)
+    }
+
+    /// Checks that `message` doesn't appear, giving it time to fade in.
+    func assertNoMessage(
+        _ message: XCUIElement, _ description: String, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertFalse(message.waitForExistence(timeout: 1.5), description, file: file, line: line)
+    }
+
+    /// Waits for the win message and dismisses it with Keep playing.
+    func tapKeepPlaying(file: StaticString = #filePath, line: UInt = #line) {
+        waitForMessage(winMessage, file: file, line: line)
+        app.buttons[AccessibilityID.keepPlaying].tap()
+        XCTAssertTrue(winMessage.waitForNonExistence(timeout: 5), "The win message stayed", file: file, line: line)
+    }
+
+    /// Answers the alert asking to confirm a new game.
     func answerNewGameAlert(confirm: Bool, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(newGameAlert.waitForExistence(timeout: 5), "No confirmation asked", file: file, line: line)
         newGameAlert.buttons[confirm ? "New Game" : "Cancel"].tap()

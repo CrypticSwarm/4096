@@ -37,6 +37,21 @@ enum Theme {
     /// The floating "+N" after a move scores.
     static let scoreGain = darkText.opacity(0.9)
 
+    /// The message over the board after a win: the winning tile's color, as
+    /// the original uses its 2048 gold, translucent so the board shows
+    /// through; nearly opaque with Increase Contrast.
+    static func winMessageBackground(winningValue: Int, increasedContrast: Bool) -> Color {
+        tileStyle(for: winningValue).background.opacity(increasedContrast ? 0.95 : 0.7)
+    }
+    /// The message over the board when the game is over: the original's
+    /// color, a little more opaque than its 0.73 so the text stays readable
+    /// over tiles; nearly opaque with Increase Contrast.
+    static func gameOverMessageBackground(increasedContrast: Bool) -> Color {
+        Color(hex: 0xEEE4DA).opacity(increasedContrast ? 0.95 : 0.8)
+    }
+    /// The size of the win and game over titles.
+    static let messageTitleFont = Font.system(size: 48, weight: .bold)
+
     /// How a tile of some value looks.
     struct TileStyle: Equatable {
         var background: Color
