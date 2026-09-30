@@ -35,6 +35,12 @@
 /// raises it whenever the score beats it. Nothing lowers it, and ``restart()``
 /// keeps it, so code that shows the session never updates the high score
 /// itself.
+///
+/// ## Saving
+///
+/// A session is `Codable` and decodes to an equal session that continues
+/// exactly as the original would have, including undo, redo and the tiles
+/// still to be drawn. ``GameStore`` saves sessions in a versioned format.
 public struct GameSession: Hashable, Sendable {
     /// The variant being played.
     public let rules: GameRules
@@ -279,3 +285,93 @@ enum WinState: String, Hashable, Sendable {
         self = rules.isWinning(board) ? .pending : .notWon
     }
 }
+
+extension GameSession: Codable {
+    /// The keys of the encoded session. The encoding is part of the saved
+    /// game format (see ``GameStore``), so existing keys and their meaning
+    /// must not change.
+    private enum CodingKeys: String, CodingKey {
+        case rules, board, score, highScore, win, undo, redo, generator
+    }
+
+    /// Decodes a session, rejecting data that isn't a consistent game: the
+    /// boards must fit the rules, and every recorded move must replay on the
+    /// board it was played on and lead to the next state, so undo and redo
+    /// can't fail later.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rules = try container.decode(GameRules.self, forKey: .rules)
+        board = try container.decode(Board.self, forKey: .board)
+        score = try container.decode(Int.self, forKey: .score)
+        highScore = try container.decode(Int.self, forKey: .highScore)
+        win = try container.decode(WinState.self, forKey: .win)
+        undoHistory = try container.decode([HistoryEntry].self, forKey: .undo)
+        redoMoves = try container.decode([MoveRecord].self, forKey: .redo).reversed()
+        generator = try container.decode(SplitMix64.self, forKey: .generator)
+        if let problem {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: problem))
+        }
+    }
+
+    /// Encodes the session. `undo` lists the moves that can be undone, oldest
+    /// first, each as the board and score `before` it and the `move` itself
+    /// (its direction and spawn); `redo` lists the moves that can be redone
+    /// in the order they would be replayed.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(rules, forKey: .rules)
+        try container.encode(board, forKey: .board)
+        try container.encode(score, forKey: .score)
+        try container.encode(highScore, forKey: .highScore)
+        try container.encode(win, forKey: .win)
+        try container.encode(undoHistory, forKey: .undo)
+        try container.encode(Array(redoMoves.reversed()), forKey: .redo)
+        try container.encode(generator, forKey: .generator)
+    }
+
+    /// Why the session isn't a consistent game, or `nil` if it is.
+    private var problem: String? {
+        let current = Snapshot(board: board, score: score)
+        guard current.fits(rules) else { return "The board or score doesn't fit the rules" }
+        guard undoHistory.count + redoMoves.count <= Self.undoLimit else { return "The history is too long" }
+        if win == .notWon && rules.isWinning(board) {
+            return "The board has a winning tile but the game isn't won"
+        }
+        var next: Snapshot?
+        for entry in undoHistory {
+            guard entry.before.fits(rules), next == nil || next == entry.before,
+                let after = entry.before.playing(entry.move)
+            else { return "The undo history isn't a line of play leading to the board" }
+            next = after
+        }
+        guard next == nil || next == current else { return "The undo history doesn't lead to the board" }
+        var state = current
+        for record in redoMoves.reversed() {
+            guard let after = state.playing(record) else { return "A move to redo doesn't fit its board" }
+            state = after
+        }
+        guard highScore >= state.score else { return "The high score is below a score that was reached" }
+        return nil
+    }
+}
+
+extension Snapshot {
+    /// Whether the board fits `rules` and the score isn't negative.
+    func fits(_ rules: GameRules) -> Bool {
+        rules.accepts(board) && score >= 0
+    }
+
+    /// The state after replaying `record` on this one, or `nil` if it doesn't
+    /// fit the board.
+    func playing(_ record: MoveRecord) -> Snapshot? {
+        record.replayed(on: board).map {
+            Snapshot(board: $0.board, score: GameSession.adding($0.scoreDelta, to: score))
+        }
+    }
+}
+
+extension Snapshot: Codable {}
+extension MoveRecord: Codable {}
+extension WinState: Codable {}
+
+extension HistoryEntry: Codable {}

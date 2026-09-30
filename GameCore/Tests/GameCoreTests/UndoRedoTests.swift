@@ -163,7 +163,7 @@ struct UndoRedoTests {
 
         // The generator moved on, so the tile is drawn afresh (in this game it
         // lands differently from the undone move's).
-        #expect(move.spawn != Self.spawn(from: states[2], to: states[3]))
+        #expect(move.spawn != Self.move(from: states[2], to: states[3]).spawn)
         #expect(!session.canRedo)
         #expect(session.redo() == nil)
         #expect(session.undoCount == 1)
@@ -246,8 +246,9 @@ struct UndoRedoTests {
         }!
     }
 
-    static func spawn(from before: GameSession, to after: GameSession) -> Spawn {
+    /// The move from `before` to `after`.
+    static func move(from before: GameSession, to after: GameSession) -> Move {
         var copy = before
-        return copy.move(direction(from: before, to: after))!.spawn
+        return copy.move(direction(from: before, to: after))!
     }
 }
