@@ -23,7 +23,7 @@ final class TileGalleryUITests: GameUITestCase {
         attachScreenshot(named: "gallery-5x5")
 
         // A new game keeps the board size: the seed's first 5×5 starting board.
-        app.buttons[AccessibilityID.newGame].tap()
+        tapNewGame(confirm: true)
         let configuration = LaunchConfiguration(seed: 1, board: try Board(notation: fixture))
         var generator = SplitMix64(seed: 1)
         assertBoard(configuration.rules.startingBoard(using: &generator).notation)
