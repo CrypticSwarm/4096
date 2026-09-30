@@ -1,0 +1,94 @@
+# Builds the iOS app and runs its unit, UI and GameCore tests on a simulator.
+name: iOS
+
+on:
+  pull_request:
+    paths-ignore: &docs
+      - "**.md"
+      - .editorconfig
+      - .swift-format
+  push:
+    branches: [master]
+    paths-ignore: *docs
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
+
+env:
+  # Must be installed on the runs-on image (see the actions/runner-images
+  # readme) and provide the simulator named by IOS_DESTINATION in the Makefile.
+  XCODE_VERSION: "26.6"
+  XCODEGEN_VERSION: "2.46.0"
+  XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+
+jobs:
+  ios:
+    name: Build and test (iOS Simulator)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          xcode="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [[ ! -d "$xcode" ]]; then
+            echo "::error title=Select Xcode::Xcode ${XCODE_VERSION} is not installed on this runner image"
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c - || {
+            echo "::error title=Install XcodeGen::Checksum mismatch for XcodeGen ${XCODEGEN_VERSION}"
+            exit 1
+          }
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Build and test
+        # annotate.sh adds the output tail to the job summary on failure (e.g.
+        # xcodegen errors); xcbeautify annotates compiler and test failures.
+        run: scripts/ci/annotate.sh "iOS build and test" make ios-test XCBEAUTIFY="xcbeautify --renderer github-actions"
+
+      - name: Export screenshots
+        if: ${{ !cancelled() }}
+        run: make ios-attachments
+
+      - name: Job summary
+        if: ${{ !cancelled() }}
+        # Also printed to the log, and the result line is raised as a notice
+        # annotation: annotations are readable through the API without log
+        # access, so passing counts are visible there too.
+        run: |
+          make ios-summary | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -m1 '^\*\*Result' "$GITHUB_STEP_SUMMARY" | tr -d '*' | sed 's/^/::notice title=iOS tests::/' || true
+
+      # Paths match BUILD_DIR, ATTACHMENTS_DIR, RESULT_BUNDLE and XCODEBUILD_LOG
+      # in the Makefile.
+      - name: Upload screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: build/attachments
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: |
+            build/TestResults.xcresult
+            build/xcodebuild.log
+          if-no-files-found: ignore

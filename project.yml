@@ -1,0 +1,72 @@
+# XcodeGen spec for the iOS app. Generate the project with `make ios-project`;
+# the .xcodeproj is not committed.
+name: Game4096
+
+options:
+  bundleIdPrefix: com.crypticswarm
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  xcodeVersion: "26.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: YES
+
+# Target-level settings override project-level ones, so shared per-target
+# settings live in this template.
+targetTemplates:
+  iOSTarget:
+    platform: iOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1" # iPhone only for now
+
+packages:
+  GameCore:
+    path: GameCore
+
+targets:
+  Game4096:
+    type: application
+    templates: [iOSTarget]
+    sources:
+      - Game4096
+      - Shared
+    dependencies:
+      - package: GameCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.crypticswarm.game4096
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: "4096"
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.puzzle-games
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+    scheme:
+      testTargets:
+        - Game4096Tests
+        - Game4096UITests
+        # Also runs the core tests on iOS, not just on Linux.
+        - package: GameCore/GameCoreTests
+
+  Game4096Tests:
+    type: bundle.unit-test
+    templates: [iOSTarget]
+    sources:
+      - Game4096Tests
+    dependencies:
+      - target: Game4096
+
+  Game4096UITests:
+    type: bundle.ui-testing
+    templates: [iOSTarget]
+    sources:
+      - Game4096UITests
+      - Shared
+    dependencies:
+      - target: Game4096

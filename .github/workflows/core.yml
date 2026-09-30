@@ -1,0 +1,41 @@
+# Builds, tests and lints the platform-independent GameCore package on Linux.
+name: Core
+
+on:
+  push:
+    # Every pushed branch, PR branches included, so no pull_request trigger.
+    branches: ["**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Build, test and lint (Linux)
+    runs-on: ubuntu-24.04
+    # Pinned Swift toolchain (includes swift-format).
+    container: swift:6.4.0-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install make
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends make
+
+      # Same steps as `make check`, split so each gets its own annotations and
+      # summary entry and lint still runs when the build or tests fail.
+      - name: Build
+        run: scripts/ci/annotate.sh "Core build" make build
+
+      - name: Test
+        run: scripts/ci/annotate.sh "Core tests" make test
+
+      - name: Lint
+        # Report formatting problems even when the build or tests fail.
+        if: ${{ !cancelled() }}
+        run: scripts/ci/annotate.sh "swift-format lint" make lint
