@@ -4,9 +4,10 @@ A native iOS take on 2048 where the goal tile is 4096. Built with SwiftUI; the
 game rules live in a platform-independent Swift package so they can be
 developed and tested without a Mac.
 
-Status: the game engine is done, and the app plays the classic 4×4 game with
-2048's look and animations. The session (undo/redo, persistence, high scores),
-score display and game-over screens are still to come.
+Status: the game engine and the game session (undo/redo, win and game over,
+high scores, saving) are done in `GameCore`, and the app plays the classic 4×4
+game with 2048's look and animations. Wiring the session into the app (score,
+undo/redo buttons, win and game-over screens, saving) is still to come.
 
 ## Repository layout
 
@@ -53,6 +54,34 @@ For UI tests and development, the app reads these launch arguments (parsed by
 
 The board element's accessibility value is the current board in the same
 notation, so UI tests can check the exact state.
+
+## Game session
+
+`GameSession` is a game in progress as a value type: rules, board, score, high
+score, undo and redo history, win state and its generator. The app's view
+model holds one and calls its methods:
+
+- `move(_:)` plays a swipe and returns the `Move` to animate, or `nil` for a
+  swipe that changes nothing (which is ignored entirely).
+- `undo()` takes back the last move; `redo()` replays an undone move with the
+  same spawned tile and returns it to animate. The session remembers three
+  moves, counting those that can be undone and those that can be redone
+  together. A new swipe after undo draws a new tile and drops the moves that
+  could have been redone.
+- `shouldPresentWin` turns `true` once per game, when a winning tile is first
+  reached, and stays `true` until `acknowledgeWin()`. Undo doesn't take the
+  win back. `isGameOver` is `true` when no swipe changes the board; undo still
+  works then.
+- `restart()` starts a new game, clearing undo and redo.
+- `highScore` is the best score reached in the variant, raised by the session
+  itself and never lowered, not even by undo or restart.
+
+`GameStore` saves one game per variant and the high scores in a `GameStorage`:
+`FileGameStorage` (JSON files in a directory the app chooses, written
+atomically) or `InMemoryGameStorage` (tests, previews, UI tests). The formats
+are versioned; a saved game that can't be restored loads as a new game that
+keeps the high score. Storage errors are thrown rather than treated as a missing
+game, so the app can avoid saving over a game it couldn't read.
 
 ## Local development
 
